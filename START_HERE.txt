@@ -1,0 +1,46 @@
+WAYPOINT CORE - QUICK START
+
+1. Start
+   Double-click "Open Waypoint Core.vbs".
+   The launcher starts:
+   - backend:  http://127.0.0.1:8000
+   - frontend: http://127.0.0.1:5173
+   Waypoint-CAR opens in French by default. English is still available from the language menu.
+
+2. Stop
+   Double-click "Close Waypoint Core.vbs".
+   This stops the recorded Waypoint backend/frontend processes and clears ports 8000/5173.
+
+3. Basic workflow test
+   - Field Reports: create a report. If you enter coordinates, enter BOTH latitude and longitude.
+   - Map: confirm the local CAR map package loads, then click "Choisir position du rapport" / "Choose report position" and click the map. The Field Report form opens with those coordinates filled.
+   - Photos & GPS: confirm the GPS test photo waypoint_gps_test_bangui.jpg creates a blue photo pin.
+   - Documents: upload a TXT file with text like "checkpoint at 4.361111, 18.555556 on 2026-06-03".
+   - Documents: confirm extracted text and clues appear, then create a document pin from the coordinate.
+   - Objets terrain / Field Objects: create a vehicle object. Add coordinates if you want it on the map.
+   - Map: confirm Field Report, photo, document, and object pins appear. Use each pin's source button.
+   - Connections: create a structured link, for example Field Report "associated with" Vehicle.
+   - Connections: confirm the same link appears in the text list and the visual graph. Click a node or line to inspect details.
+   - Timeline: confirm reports, photos, documents, and event objects appear where available.
+   - Timeline: generate a simple .txt summary.
+
+4. Current MVP limits
+   - TXT and CSV extraction work with built-in code.
+   - PDF/DOCX extraction is attempted only if local libraries are installed.
+   - Image OCR is marked planned/not configured; Tesseract is not wired yet.
+   - PDF/DOCX finished report exports are not connected.
+   - Connections include structured link storage and a simple visual graph, not advanced graph analytics.
+   - Field Objects are simple local cards, not a complex object system.
+   - The offline map is a lightweight local CAR reference package, not a full GIS basemap or satellite/tile service.
+
+5. Offline map source note
+   Runtime map files are local GeoJSON under frontend/public/maps/car/.
+   They include CAR boundary, labeled prefectures, places, roads, waterways, and confirmed border/customs points where available.
+   The package is built from HDX/OCHA CAR COD-AB and HOTOSM/OpenStreetMap exports; Geofabrik is documented as the full upstream OSM extract source for future rebuilds.
+
+6. Language note
+   Normal app text is stored in frontend/src/locales/fr.js and frontend/src/locales/en.js.
+   French is the default for the CAR build.
+   No AI translation, internet translation API, or online access is required.
+
+All data stays local in the data/ folder.

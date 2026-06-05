@@ -1,0 +1,254 @@
+import React, { useEffect, useState, useCallback } from "react";
+import LFIForm from "./components/LFIForm.jsx";
+import PhotoIngest from "./components/PhotoIngest.jsx";
+import MapView from "./components/MapView.jsx";
+import Chronologie from "./components/Chronologie.jsx";
+import Documents from "./components/Documents.jsx";
+import Connections from "./components/Connections.jsx";
+import FieldObjects from "./components/FieldObjects.jsx";
+import { getDocuments, getFieldObjects, getLfi, getLinks, getPhotos, getPins, getStorageSize, health } from "./api";
+import { t } from "./i18n";
+
+const lang = "en";
+const tt = (key, vars = {}) => t(key, lang, vars);
+
+export default function App() {
+  const [active, setActive] = useState("lfi");
+  const [lfiList, setLfiList] = useState([]);
+  const [photoList, setPhotoList] = useState([]);
+  const [pinList, setPinList] = useState([]);
+  const [documentList, setDocumentList] = useState([]);
+  const [linkList, setLinkList] = useState([]);
+  const [objectList, setObjectList] = useState([]);
+  const [sysStatus, setSysStatus] = useState(() => tt("app.status.init"));
+  const [mapCoordsForLfi, setMapCoordsForLfi] = useState(null);
+  const [theme, setTheme] = useState(() => localStorage.getItem("waypoint-theme") || "dark");
+  const [mapFocus, setMapFocus] = useState(null);
+  const [sourceFocus, setSourceFocus] = useState(null);
+  const [storageDisplay, setStorageDisplay] = useState(null);
+
+  const loadAll = useCallback(async () => {
+    try {
+      const [lfi, photos, pins, documents, links, objects, h, storage] = await Promise.all([
+        getLfi(),
+        getPhotos(),
+        getPins(),
+        getDocuments(),
+        getLinks(),
+        getFieldObjects(),
+        health().catch(() => ({ status: "backend?" })),
+        getStorageSize().catch(() => null),
+      ]);
+      setLfiList(lfi);
+      setPhotoList(photos);
+      setPinList(pins);
+      setDocumentList(documents);
+      setLinkList(links);
+      setObjectList(objects);
+      if (storage) setStorageDisplay(storage.display);
+      setSysStatus(h.status === "ok" ? tt("app.status.backend_ok", {lfi: h.counts.lfi, photos: h.counts.photos, pins: h.counts.pins, documents: h.counts.documents || 0, links: h.counts.links || 0, objects: h.counts.objects || 0}) : tt("app.status.backend_error"));
+    } catch (e) {
+      setSysStatus(tt("app.status.load_error"));
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAll();
+    const id = setInterval(() => { loadAll(); }, 25000);
+    return () => clearInterval(id);
+  }, [loadAll]);
+
+  async function refreshAll() {
+    await loadAll();
+  }
+
+  function toggleTheme() {
+    setTheme((current) => {
+      const next = current === "dark" ? "light" : "dark";
+      localStorage.setItem("waypoint-theme", next);
+      return next;
+    });
+  }
+
+  function openSource(source, sourceId) {
+    const normalized = source === "field_report" ? "lfi" : source;
+    if (normalized === "photo") setActive("photos");
+    if (normalized === "lfi") setActive("lfi");
+    if (normalized === "document") setActive("documents");
+    if (["person", "vehicle", "group", "location", "event"].includes(normalized)) setActive("objects");
+    if (sourceId != null) {
+      setSourceFocus({ source: normalized, id: String(sourceId), nonce: Date.now() });
+    }
+  }
+
+  return (
+    <div className="app-shell" data-theme={theme}>
+      <header>
+        <div>
+          <h1>{tt("app.title")}</h1>
+          <div className="subtitle">{tt("app.subtitle")}</div>
+        </div>
+        <div className="header-status">
+          {sysStatus}<br />
+          <span style={{ opacity: 0.7 }}>{tt("app.flow")}</span>
+          <div className="header-controls">
+            <button type="button" className="theme-toggle" onClick={toggleTheme}>
+              {theme === "dark" ? tt("theme.light") : tt("theme.dark")}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="nav">
+        <button className={active === "lfi" ? "active" : ""} onClick={() => setActive("lfi")}>
+          {tt("nav.lfi")}
+        </button>
+        <button className={active === "photos" ? "active" : ""} onClick={() => setActive("photos")}>
+          {tt("nav.photos")}
+        </button>
+        <button className={active === "map" ? "active" : ""} onClick={() => setActive("map")}>
+          {tt("nav.map")}
+        </button>
+        <button className={active === "documents" ? "active" : ""} onClick={() => setActive("documents")}>
+          {tt("nav.documents")}
+        </button>
+        <button className={active === "objects" ? "active" : ""} onClick={() => setActive("objects")}>
+          {tt("nav.objects")}
+        </button>
+        <button className={active === "connections" ? "active" : ""} onClick={() => setActive("connections")}>
+          {tt("nav.connections")}
+        </button>
+        <button className={active === "chronologie" ? "active" : ""} onClick={() => setActive("chronologie")}>
+          {tt("nav.chronologie")}
+        </button>
+        <button onClick={refreshAll} className="refresh-nav">
+          {tt("nav.refresh")}
+        </button>
+      </div>
+
+      <div className="container">
+        <div className="workflow-strip" aria-label={tt("workflow.title")}>
+          <span>{tt("workflow.step1")}</span>
+          <span>{tt("workflow.step2")}</span>
+          <span>{tt("workflow.step3")}</span>
+          <span>{tt("workflow.step4")}</span>
+          <span>{tt("workflow.step5")}</span>
+        </div>
+
+        {active === "lfi" && (
+          <LFIForm
+            lang={lang}
+            onSaved={refreshAll}
+            recentLfi={lfiList}
+            mapCoords={mapCoordsForLfi}
+            onMapCoordsUsed={() => setMapCoordsForLfi(null)}
+            focusedId={sourceFocus?.source === "lfi" ? sourceFocus : null}
+          />
+        )}
+
+        {active === "photos" && (
+          <PhotoIngest
+            lang={lang}
+            onUploaded={refreshAll}
+            photos={photoList}
+            focusedId={sourceFocus?.source === "photo" ? sourceFocus : null}
+          />
+        )}
+
+        {active === "map" && (
+          <MapView
+            lang={lang}
+            lfiList={lfiList}
+            photoList={photoList}
+            documentList={documentList}
+            objectList={objectList}
+            pinList={pinList}
+            focusCoordinates={mapFocus}
+            refreshAll={refreshAll}
+            onUseCoordinates={(coords) => {
+              setMapCoordsForLfi(coords);
+              setActive("lfi");
+            }}
+            onOpenSource={openSource}
+          />
+        )}
+
+        {active === "documents" && (
+          <Documents
+            lang={lang}
+            documents={documentList}
+            onUploaded={refreshAll}
+            onPinCreated={refreshAll}
+            focusedId={sourceFocus?.source === "document" ? sourceFocus : null}
+          />
+        )}
+
+        {active === "objects" && (
+          <FieldObjects
+            lang={lang}
+            objects={objectList}
+            links={linkList}
+            lfiList={lfiList}
+            photoList={photoList}
+            documents={documentList}
+            focusedId={sourceFocus && ["person", "vehicle", "group", "location", "event"].includes(sourceFocus.source) ? sourceFocus : null}
+            onCreated={refreshAll}
+            onOpenSource={openSource}
+            onShowOnMap={(coords) => {
+              setMapFocus({ ...coords, nonce: Date.now() });
+              setActive("map");
+            }}
+          />
+        )}
+
+        {active === "connections" && (
+          <Connections
+            lang={lang}
+            links={linkList}
+            lfiList={lfiList}
+            photoList={photoList}
+            documents={documentList}
+            fieldObjects={objectList}
+            pins={pinList}
+            onCreated={refreshAll}
+            onOpenSource={openSource}
+            onShowOnMap={(coords) => {
+              setMapFocus({ ...coords, nonce: Date.now() });
+              setActive("map");
+            }}
+          />
+        )}
+
+        {active === "chronologie" && (
+          <Chronologie
+            lang={lang}
+            lfiList={lfiList}
+            photoList={photoList}
+            documentList={documentList}
+            objectList={objectList}
+          />
+        )}
+
+        {active !== "map" && active !== "chronologie" && (
+          <div className="card" style={{ padding: "10px 14px", fontSize: 13 }}>
+            <strong>{tt("status.terrain")}</strong> {tt("status.lfi_count", {count: lfiList.length})} • {tt("status.photo_count", {count: photoList.length})} • {tt("status.doc_count", {count: documentList.length})} • {tt("status.object_count", {count: objectList.length})} • {tt("status.link_count", {count: linkList.length})} • {tt("status.pin_count", {count: pinList.length})}.
+            {tt("status.map_hint")}
+            {storageDisplay != null && (
+              <span style={{ marginLeft: 12, color: "var(--muted)", fontSize: 12 }}>
+                {tt("status.storage", { size: storageDisplay })}
+              </span>
+            )}
+          </div>
+        )}
+
+        <div style={{ textAlign: "center", marginTop: 20 }}>
+          <button onClick={refreshAll} className="small-action">{tt("status.refresh")}</button>
+        </div>
+      </div>
+
+      <footer>
+        {tt("footer")}
+      </footer>
+    </div>
+  );
+}

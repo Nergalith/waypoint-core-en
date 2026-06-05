@@ -1,0 +1,18 @@
+{
+  "name": "waypoint-core",
+  "private": true,
+  "version": "0.1.0-mvp",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --configLoader native",
+    "build": "vite build --configLoader native",
+    "preview": "vite preview --host 127.0.0.1 --port 5173 --configLoader native"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "leaflet": "^1.9.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.0.3"
+  }
+}

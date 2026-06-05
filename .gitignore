@@ -1,0 +1,47 @@
+# Python / Backend
+backend/.venv/
+backend/__pycache__/
+backend/app/__pycache__/
+backend/app/services/__pycache__/
+backend/*.db
+backend/*.sqlite3
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Data (user content - never commit)
+data/
+*.log
+*.db
+*.sqlite3
+
+# Releases / packaging
+release/
+runtime/
+app/
+!backend/app/
+!backend/app/**
+
+# OS / editors
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Misc
+scripts/_map_cache/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
