@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+﻿import React, { useEffect, useState, useCallback } from "react";
 import LFIForm from "./components/LFIForm.jsx";
 import PhotoIngest from "./components/PhotoIngest.jsx";
 import MapView from "./components/MapView.jsx";
@@ -7,25 +7,42 @@ import Documents from "./components/Documents.jsx";
 import Connections from "./components/Connections.jsx";
 import FieldObjects from "./components/FieldObjects.jsx";
 import { getDocuments, getFieldObjects, getLfi, getLinks, getPhotos, getPins, getStorageSize, health } from "./api";
-import { t } from "./i18n";
+import { DEFAULT_LANG, t, LANGUAGES } from "./i18n";
 
-const lang = "en";
-const tt = (key, vars = {}) => t(key, lang, vars);
+const BLANK_LFI_FORM = {
+  report_type: "Observation",
+  who_involved: "",
+  what_happened: "",
+  where_happened: "",
+  when_happened: "",
+  notes: "",
+  related_to: "",
+  source_reliability: "F",
+  latitude: "",
+  longitude: "",
+  pin_category: "general",
+  pin_color: "#eab308",
+};
 
 export default function App() {
-  const [active, setActive] = useState("lfi");
+  const [active, setActive] = useState("lfi"); // lfi | photos | map | documents | objects | connections | chronologie
   const [lfiList, setLfiList] = useState([]);
+  const [lfiDraft, setLfiDraft] = useState(BLANK_LFI_FORM);
+  const [lfiDraftRel, setLfiDraftRel] = useState("F");
+  const [lfiEditingId, setLfiEditingId] = useState(null);
   const [photoList, setPhotoList] = useState([]);
   const [pinList, setPinList] = useState([]);
   const [documentList, setDocumentList] = useState([]);
   const [linkList, setLinkList] = useState([]);
   const [objectList, setObjectList] = useState([]);
-  const [sysStatus, setSysStatus] = useState(() => tt("app.status.init"));
+  const [sysStatus, setSysStatus] = useState(() => t("app.status.init", DEFAULT_LANG));
+  const [lang, setLang] = useState(DEFAULT_LANG);
   const [mapCoordsForLfi, setMapCoordsForLfi] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem("waypoint-theme") || "dark");
   const [mapFocus, setMapFocus] = useState(null);
   const [sourceFocus, setSourceFocus] = useState(null);
   const [storageDisplay, setStorageDisplay] = useState(null);
+  const tt = (key, vars = {}) => t(key, lang, vars);
 
   const loadAll = useCallback(async () => {
     try {
@@ -50,13 +67,14 @@ export default function App() {
     } catch (e) {
       setSysStatus(tt("app.status.load_error"));
     }
-  }, []);
+  }, [lang]);  // depend on lang so status uses correct lang; cheap for low-end
 
   useEffect(() => {
     loadAll();
+    // periodic light refresh (low resource machines: every 25s is fine) - avoid frequent to save CPU/RAM
     const id = setInterval(() => { loadAll(); }, 25000);
     return () => clearInterval(id);
-  }, [loadAll]);
+  }, [loadAll]);  // re-setup if loadAll changes (on lang)
 
   async function refreshAll() {
     await loadAll();
@@ -92,6 +110,15 @@ export default function App() {
           {sysStatus}<br />
           <span style={{ opacity: 0.7 }}>{tt("app.flow")}</span>
           <div className="header-controls">
+            <label style={{ marginRight: '2px', opacity: 0.8 }}>{tt("lang.label")}:</label>
+            <select
+              value={lang}
+              onChange={(e) => setLang(e.target.value)}
+            >
+              {LANGUAGES.map(l => (
+                <option key={l.code} value={l.code}>{l.label}</option>
+              ))}
+            </select>
             <button type="button" className="theme-toggle" onClick={toggleTheme}>
               {theme === "dark" ? tt("theme.light") : tt("theme.dark")}
             </button>
@@ -143,6 +170,12 @@ export default function App() {
             mapCoords={mapCoordsForLfi}
             onMapCoordsUsed={() => setMapCoordsForLfi(null)}
             focusedId={sourceFocus?.source === "lfi" ? sourceFocus : null}
+            form={lfiDraft}
+            setForm={setLfiDraft}
+            selectedRel={lfiDraftRel}
+            setSelectedRel={setLfiDraftRel}
+            editingId={lfiEditingId}
+            setEditingId={setLfiEditingId}
           />
         )}
 
@@ -229,9 +262,10 @@ export default function App() {
           />
         )}
 
+        {/* Always show a tiny combined status bar when not on map */}
         {active !== "map" && active !== "chronologie" && (
           <div className="card" style={{ padding: "10px 14px", fontSize: 13 }}>
-            <strong>{tt("status.terrain")}</strong> {tt("status.lfi_count", {count: lfiList.length})} • {tt("status.photo_count", {count: photoList.length})} • {tt("status.doc_count", {count: documentList.length})} • {tt("status.object_count", {count: objectList.length})} • {tt("status.link_count", {count: linkList.length})} • {tt("status.pin_count", {count: pinList.length})}.
+            <strong>{tt("status.terrain")}</strong> {tt("status.lfi_count", {count: lfiList.length})} â€¢ {tt("status.photo_count", {count: photoList.length})} â€¢ {tt("status.doc_count", {count: documentList.length})} â€¢ {tt("status.object_count", {count: objectList.length})} â€¢ {tt("status.link_count", {count: linkList.length})} â€¢ {tt("status.pin_count", {count: pinList.length})}.
             {tt("status.map_hint")}
             {storageDisplay != null && (
               <span style={{ marginLeft: 12, color: "var(--muted)", fontSize: 12 }}>
@@ -252,3 +286,4 @@ export default function App() {
     </div>
   );
 }
+

@@ -1,0 +1,1 @@
+﻿{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"Offline Test Region","admin0Name_en":"Offline Test Region"},"geometry":{"type":"Polygon","coordinates":[[[-20,-10],[30,-10],[30,25],[-20,25],[-20,-10]]]}}]}

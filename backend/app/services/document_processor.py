@@ -135,7 +135,10 @@ def _read_pdf(path: Path) -> tuple[str, str]:
     parts = []
     for page in reader.pages[:30]:
         parts.append(page.extract_text() or "")
-    return "\n".join(parts), ""
+    text = "\n".join(parts)
+    # Tag Waypoint-origin PDFs so analysts can identify the source in the DB
+    detail = "origine Waypoint" if "WAYPOINT CORE" in text[:600] else ""
+    return text, detail
 
 
 def _read_docx(path: Path) -> tuple[str, str]:

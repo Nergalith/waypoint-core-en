@@ -1,79 +1,92 @@
-# Waypoint Core — English Template
+﻿# Waypoint Core EN
 
-Local-first field intelligence tool. Offline. English only. No cloud, no accounts, no AI.
+Clean English test build for local/offline field workflow testing on Windows laptops, including older ToughBook-class hardware.
 
-This is the English master template for Waypoint Core. Fork and configure for your deployment context.
+This folder is meant to be copied as a self-contained project sandbox. It is not the CAR demo build and does not include CAR demo records, photos, documents, objects, links, or map data.
 
-## Stack
+## What Is Included
 
-- Backend: FastAPI + SQLite (`backend/app/`)
-- Frontend: React + Vite (`frontend/src/`)
-- Local storage: `data/photos/`, `data/documents/`, `data/waypoint.db`
-- PDF export: reportlab (auto-files on finalize; manual bundle export)
-- Map: Leaflet — blank world default, centred [20, 0] zoom 2. Add your own GeoJSON under `frontend/public/maps/` and load it in `MapView.jsx`.
+- FastAPI + SQLite backend.
+- React/Vite frontend.
+- English-only UI by default.
+- Dark mode by default with a Light Mode toggle.
+- Field reports with coordinate validation, edit/update/delete, finalize/unlock, and source highlighting.
+- Photo upload with thumbnail creation and EXIF GPS extraction where available.
+- Document upload and local text extraction for simple files.
+- Field objects for people, vehicles, groups, locations, and events.
+- Structured connections plus a lightweight visual graph.
+- Timeline and simple text summary tools.
+- Offline test map package under `frontend/public/maps/test/`.
+- Local map pins, source buttons, symbol/category colors, report-position picker, and manual pins.
+- Start/close scripts that use paths relative to the copied folder.
 
-## Features
+## What Is Not Included
 
-- **Field Reports**: who/what/where/when/notes, source reliability A-F, optional coordinates, finalize/lock with auto-PDF
-- **Photos & GPS**: EXIF extraction, thumbnails, GPS pins — photos compressed to max 1024px on ingest
-- **Documents**: TXT/CSV text extraction, rule-based clues (dates, coordinates, keywords), document-to-map pins
-- **Field Objects**: Person, Vehicle, Group, Location, Event cards with coordinates
-- **Map**: blank world map, pins from all sources, manual pin placement with category/status selector
-- **Connections**: structured links + visual graph
-- **Timeline**: combined view of reports, photos, documents, events
-- **PDF export**: auto-filed on finalize (`Waypoint Reports/YYYY/MM/`), manual bundle from selected reports
-
-## Not included
-
-- No OCR
-- No cloud sync
-- No user accounts
-- No AI analysis
-- No SIGINT modules
+- No CAR demo database.
+- No CAR demo photos or documents.
+- No CAR map package as the default map.
+- No cloud services, accounts, AI, SIGINT modules, or online map APIs.
+- The included test map is a tiny offline map for function testing, not an operational basemap.
 
 ## Start
 
-Double-click `Open Waypoint Core.vbs` or run:
+Double-click:
 
-```powershell
-.\scripts\run_waypoint.ps1
+```text
+Open Waypoint Core.vbs
 ```
+
+Default local addresses:
 
 - Backend: `http://127.0.0.1:8000`
 - Frontend: `http://127.0.0.1:5173`
 
-## Stop
+To stop Waypoint, double-click:
 
-Double-click `Close Waypoint Core.vbs` or run:
-
-```powershell
-.\scripts\close_waypoint.ps1
+```text
+Close Waypoint Core.vbs
 ```
 
-## Manual start
+## Manual Development Start
+
+Backend:
 
 ```powershell
-# Backend
 cd backend
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-
-# Frontend
-cd frontend
-npm install
-npm run dev
 ```
 
-## Map package
+Frontend:
 
-The default map is a blank Leaflet canvas centred on [20, 0] at zoom 2. To add a local map package:
-
-1. Place GeoJSON files under `frontend/public/maps/<your-region>/`
-2. Update `MapView.jsx` — set `MAP_DEFAULT_CENTER`, `INITIAL_ZOOM`, and add layer loading in the map initialisation `useEffect`
+```powershell
+cd frontend
+npm install
+npm run dev -- --host 127.0.0.1
+```
 
 ## Data
 
-All data stays local under `data/`. Nothing is sent to the internet.
+Runtime data lives under `data/`:
 
-PDF reports are saved to `Waypoint Reports/YYYY/MM/` at the repo root.
+- `data/waypoint.db`
+- `data/photos/`
+- `data/photos/thumbs/`
+- `data/documents/`
+
+This English test build should start with an empty database and empty media/document folders.
+
+## Offline Test Map
+
+Runtime map files are local GeoJSON under:
+
+```text
+frontend/public/maps/test/
+```
+
+The package is intentionally tiny. It contains a simple test boundary, two regions, a few sample roads, a river, places, and a test crossing point. Normal use does not require internet.
+
+## Transfer To ToughBook
+
+See `START_HERE_ToughBook.txt` for the short transfer checklist.

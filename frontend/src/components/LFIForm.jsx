@@ -1,11 +1,39 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { createLfi, exportLfi, finalizeLfi, reopenLfi } from "../api";
+﻿import React, { useEffect, useMemo, useState } from "react";
+import { createLfi, deleteLfi, exportLfi, finalizeLfi, reopenLfi, updateLfi } from "../api";
 import { t, translateReportType } from "../i18n";
+import { PIN_CATEGORIES, STATUS_COLORS } from "../pinConstants";
 
-export default function LFIForm({ lang = "fr", onSaved, recentLfi, mapCoords, onMapCoordsUsed, focusedId }) {
+const BLANK_FORM = {
+  report_type: "Observation",
+  who_involved: "",
+  what_happened: "",
+  where_happened: "",
+  when_happened: "",
+  notes: "",
+  related_to: "",
+  source_reliability: "F",
+  latitude: "",
+  longitude: "",
+  pin_category: "general",
+  pin_color: "#eab308",
+};
+
+export default function LFIForm({
+  lang = "en",
+  onSaved,
+  recentLfi,
+  mapCoords,
+  onMapCoordsUsed,
+  focusedId,
+  form,
+  setForm,
+  selectedRel,
+  setSelectedRel,
+  editingId,
+  setEditingId,
+}) {
   const tt = (key, vars = {}) => t(key, lang, vars);
 
-  // Memoize to avoid recreating arrays/objects on every render (low memory/CPU on old hardware)
   const REPORT_TYPES = useMemo(() => [
     ["Observation", tt("type.Observation")],
     ["Patrol", tt("type.Patrol")],
@@ -23,22 +51,10 @@ export default function LFIForm({ lang = "fr", onSaved, recentLfi, mapCoords, on
     { code: "F", label: tt("rel.F_label"), color: "#6b7280", tip: tt("rel.F_tip") },
   ], [lang]);
 
-  const [form, setForm] = useState({
-    report_type: "Observation",
-    who_involved: "",
-    what_happened: "",
-    where_happened: "",
-    when_happened: "",
-    notes: "",
-    related_to: "",
-    source_reliability: "F",
-    latitude: "",
-    longitude: "",
-  });
-  const [selectedRel, setSelectedRel] = useState("F");
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const [lockingId, setLockingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [generating, setGenerating] = useState(false);
@@ -50,6 +66,33 @@ export default function LFIForm({ lang = "fr", onSaved, recentLfi, mapCoords, on
   function pickReliability(code) {
     setSelectedRel(code);
     update("source_reliability", code);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setForm(BLANK_FORM);
+    setSelectedRel("F");
+  }
+
+  function handleEditDraft(l) {
+    setForm({
+      report_type: l.report_type || "Observation",
+      who_involved: l.who_involved || "",
+      what_happened: l.what_happened || "",
+      where_happened: l.where_happened || "",
+      when_happened: l.when_happened || "",
+      notes: l.notes || "",
+      related_to: l.related_to || "",
+      source_reliability: l.source_reliability || "F",
+      latitude: l.latitude != null ? String(l.latitude) : "",
+      longitude: l.longitude != null ? String(l.longitude) : "",
+      pin_category: l.pin_category || "general",
+      pin_color: l.pin_color || "#eab308",
+    });
+    setSelectedRel(l.source_reliability || "F");
+    setEditingId(l.id);
+    setStatus(tt("lfi.editing_banner", { id: l.id }));
+    document.getElementById("lfi-form-top")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   useEffect(() => {
@@ -91,13 +134,47 @@ export default function LFIForm({ lang = "fr", onSaved, recentLfi, mapCoords, on
     if (lockingId) return;
     setLockingId(id);
     try {
-      await reopenLfi(id);
+      const report = await reopenLfi(id);
+      setForm({
+        report_type: report.report_type || "Observation",
+        who_involved: report.who_involved || "",
+        what_happened: report.what_happened || "",
+        where_happened: report.where_happened || "",
+        when_happened: report.when_happened || "",
+        notes: report.notes || "",
+        related_to: report.related_to || "",
+        source_reliability: report.source_reliability || "F",
+        latitude: report.latitude != null ? String(report.latitude) : "",
+        longitude: report.longitude != null ? String(report.longitude) : "",
+        pin_category: report.pin_category || "general",
+        pin_color: report.pin_color || "#eab308",
+      });
+      setSelectedRel(report.source_reliability || "F");
+      setEditingId(report.id);
+      setStatus(tt("lfi.unlocked_to_edit", { id: report.id }));
+      document.getElementById("lfi-form-top")?.scrollIntoView({ behavior: "smooth", block: "start" });
       if (onSaved) onSaved();
     } catch {
       setStatus(tt("lfi.unlock_error"));
       setTimeout(() => setStatus(""), 4200);
     } finally {
       setLockingId(null);
+    }
+  }
+
+  async function handleDelete(id) {
+    if (deletingId) return;
+    if (!window.confirm(tt("lfi.confirm_delete"))) return;
+    setDeletingId(id);
+    try {
+      await deleteLfi(id);
+      if (editingId === id) cancelEdit();
+      if (onSaved) onSaved();
+    } catch {
+      setStatus(tt("lfi.delete_error"));
+      setTimeout(() => setStatus(""), 4200);
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -166,25 +243,21 @@ export default function LFIForm({ lang = "fr", onSaved, recentLfi, mapCoords, on
     }
 
     try {
-      await createLfi({ ...form, ...coords });
-      setStatus(tt("lfi.success"));
-      // reset most fields but keep type
-      setForm({
-        report_type: form.report_type,
-        who_involved: "",
-        what_happened: "",
-        where_happened: "",
-        when_happened: "",
-        notes: "",
-        related_to: "",
-        source_reliability: "F",
-        latitude: "",
-        longitude: "",
-      });
-      setSelectedRel("F");
+      if (editingId) {
+        await updateLfi(editingId, { ...form, ...coords });
+        setStatus(tt("lfi.update_success"));
+        setEditingId(null);
+        setForm(BLANK_FORM);
+        setSelectedRel("F");
+      } else {
+        await createLfi({ ...form, ...coords });
+        setStatus(tt("lfi.success"));
+        setForm((prev) => ({ ...BLANK_FORM, report_type: prev.report_type }));
+        setSelectedRel("F");
+      }
       if (onSaved) onSaved();
     } catch {
-      setStatus(tt("lfi.error"));
+      setStatus(editingId ? tt("lfi.update_error") : tt("lfi.error"));
     } finally {
       setSaving(false);
       setTimeout(() => setStatus(""), 4200);
@@ -203,10 +276,23 @@ export default function LFIForm({ lang = "fr", onSaved, recentLfi, mapCoords, on
 
   return (
     <div className="card">
-      <h2>{tt("lfi.title")}</h2>
+      <h2 id="lfi-form-top">{tt("lfi.title")}</h2>
       <p style={{ color: "var(--soft)", marginBottom: 12 }}>
         {tt("lfi.intro")}
       </p>
+
+      {editingId && (
+        <div style={{
+          background: "rgba(234,179,8,0.12)", border: "1px solid rgba(234,179,8,0.4)",
+          borderRadius: 4, padding: "7px 12px", marginBottom: 12,
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+        }}>
+          <span style={{ fontSize: 13 }}>{tt("lfi.editing_banner", { id: editingId })}</span>
+          <button type="button" className="small-action" onClick={cancelEdit} style={{ fontSize: 11 }}>
+            {tt("lfi.cancel_edit")}
+          </button>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <label>{tt("lfi.type_label")}</label>
@@ -311,8 +397,44 @@ export default function LFIForm({ lang = "fr", onSaved, recentLfi, mapCoords, on
           {tt("lfi.reliability_tip", { label: currentRel.label, tip: currentRel.tip })}
         </div>
 
-        <button type="submit" className="big-button" disabled={saving} title={tt("lfi.submit")}>
-          {saving ? tt("lfi.submit_saving") : tt("lfi.submit")}
+        {/* NEW: Pin category and status color for auto map pin pipeline */}
+        <label>{tt("lfi.pin_category_label") || "CatÃ©gorie du point (carte)"}</label>
+        <select
+          value={form.pin_category || "general"}
+          onChange={(e) => update("pin_category", e.target.value)}
+        >
+          {Object.entries(PIN_CATEGORIES).map(([key, cat]) => (
+            <option key={key} value={key}>{cat.symbol} {tt(`pin.cat.${key}`) || cat.labelFr || key}</option>
+          ))}
+        </select>
+
+        <label>{tt("lfi.pin_status_label") || "Couleur / Statut du point"}</label>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {Object.entries(STATUS_COLORS).map(([key, c]) => {
+            const active = (form.pin_color || "#eab308") === c.hex;
+            return (
+              <button
+                type="button"
+                key={key}
+                onClick={() => update("pin_color", c.hex)}
+                title={tt(`pin.status.${key}`) || c.labelFr}
+                style={{
+                  width: 28, height: 28, borderRadius: 4,
+                  background: c.hex,
+                  border: active ? "2px solid #fff" : "1px solid rgba(255,255,255,0.3)",
+                  cursor: "pointer",
+                  boxShadow: active ? "0 0 0 2px #eab308" : "none",
+                }}
+              />
+            );
+          })}
+        </div>
+        <div className="tooltip" style={{ marginTop: 2, fontSize: 11 }}>
+          {tt("map.colors") || "Rouge=hostile, Vert=ami, Jaune=inconnu, Bleu=neutre, Gris=inactif. Forme = catÃ©gorie."}
+        </div>
+
+        <button type="submit" className="big-button" disabled={saving}>
+          {saving ? tt("lfi.submit_saving") : editingId ? tt("lfi.update") : tt("lfi.submit")}
         </button>
       </form>
 
@@ -330,7 +452,7 @@ export default function LFIForm({ lang = "fr", onSaved, recentLfi, mapCoords, on
                   disabled={selectedIds.size === 0 || generating}
                   style={{ fontSize: 11, background: "rgba(234,179,8,0.15)", borderColor: "#eab308" }}
                 >
-                  {generating ? "…" : tt("lfi.generate_report_btn", { count: selectedIds.size })}
+                  {generating ? "â€¦" : tt("lfi.generate_report_btn", { count: selectedIds.size })}
                 </button>
                 <button className="small-action" onClick={exitSelectMode} disabled={generating} style={{ fontSize: 11 }}>
                   {tt("lfi.select_cancel")}
@@ -353,7 +475,9 @@ export default function LFIForm({ lang = "fr", onSaved, recentLfi, mapCoords, on
         {(selectMode ? (recentLfi || []) : visibleRecentLfi).map((l, i) => {
           const isFinalized = l.status === "finalized";
           const isBusy = lockingId === l.id;
+          const isDeleting = deletingId === l.id;
           const isChecked = selectedIds.has(l.id);
+          const isEditing = editingId === l.id;
           return (
             <div
               key={l.id || i}
@@ -362,7 +486,11 @@ export default function LFIForm({ lang = "fr", onSaved, recentLfi, mapCoords, on
               style={{
                 fontSize: 13,
                 opacity: isFinalized ? 0.82 : 1,
-                outline: selectMode && isChecked ? "1px solid #eab308" : "none",
+                outline: selectMode && isChecked
+                  ? "1px solid #eab308"
+                  : isEditing
+                    ? "1px solid rgba(234,179,8,0.7)"
+                    : "none",
                 cursor: selectMode ? "pointer" : "default",
               }}
               onClick={selectMode ? () => toggleSelect(l.id) : undefined}
@@ -387,13 +515,13 @@ export default function LFIForm({ lang = "fr", onSaved, recentLfi, mapCoords, on
                     padding: "1px 6px", borderRadius: 3, fontWeight: 700,
                     flexShrink: 0, alignSelf: "center",
                   }}>
-                    🔒 {tt("lfi.status.finalized")}
+                    ðŸ”’ {tt("lfi.status.finalized")}
                   </span>
                 )}
                 <span style={{ flex: 1 }}>
-                  {translateReportType(l.report_type, tt)} — {l.what_happened?.slice(0, 70) || l.who_involved?.slice(0, 50) || tt("lfi.no_detail")}
-                  {l.latitude && " 📍"}
-                  {l.related_to && <span style={{color: 'var(--accent)'}}> • {tt("common.linked", {note: l.related_to.slice(0,30)})}</span>}
+                  {translateReportType(l.report_type, tt)} â€” {l.what_happened?.slice(0, 70) || l.who_involved?.slice(0, 50) || tt("lfi.no_detail")}
+                  {l.latitude && " ðŸ“"}
+                  {l.related_to && <span style={{color: 'var(--accent)'}}> â€¢ {tt("common.linked", {note: l.related_to.slice(0,30)})}</span>}
                 </span>
               </div>
               {isFinalized && l.finalized_at && (
@@ -402,7 +530,16 @@ export default function LFIForm({ lang = "fr", onSaved, recentLfi, mapCoords, on
                 </div>
               )}
               {!selectMode && (
-                <div style={{ marginTop: 5 }}>
+                <div style={{ marginTop: 5, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {!isFinalized && (
+                    <button
+                      className="small-action"
+                      onClick={() => handleEditDraft(l)}
+                      style={{ fontSize: 11 }}
+                    >
+                      {tt("lfi.edit_btn") || "Modifier"}
+                    </button>
+                  )}
                   {isFinalized ? (
                     <button
                       className="small-action"
@@ -410,7 +547,7 @@ export default function LFIForm({ lang = "fr", onSaved, recentLfi, mapCoords, on
                       disabled={isBusy}
                       style={{ fontSize: 11 }}
                     >
-                      {isBusy ? "…" : tt("lfi.unlock_btn")}
+                      {isBusy ? "â€¦" : tt("lfi.unlock_btn")}
                     </button>
                   ) : (
                     <button
@@ -419,9 +556,17 @@ export default function LFIForm({ lang = "fr", onSaved, recentLfi, mapCoords, on
                       disabled={isBusy}
                       style={{ fontSize: 11, background: "rgba(234,179,8,0.12)", borderColor: "#eab308" }}
                     >
-                      {isBusy ? "…" : tt("lfi.finalize_btn")}
+                      {isBusy ? "â€¦" : tt("lfi.finalize_btn")}
                     </button>
                   )}
+                  <button
+                    className="small-action"
+                    onClick={() => handleDelete(l.id)}
+                    disabled={isDeleting || isBusy}
+                    style={{ fontSize: 11, background: "rgba(239,68,68,0.10)", borderColor: "rgba(239,68,68,0.5)", color: "#ef4444" }}
+                  >
+                    {isDeleting ? "â€¦" : tt("lfi.delete_btn")}
+                  </button>
                 </div>
               )}
             </div>
@@ -436,3 +581,4 @@ function reliability_color(code) {
   const m = { A: "#16a34a", B: "#84cc16", C: "#eab308", D: "#f97316", E: "#ef4444", F: "#6b7280" };
   return m[(code || "F").toUpperCase()] || "#6b7280";
 }
+

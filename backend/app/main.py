@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import shutil
 import json
@@ -51,6 +51,23 @@ class LfiCreate(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     related_to: str = ""
+    pin_category: str = "general"
+    pin_color: str = "#eab308"
+
+
+class LfiUpdate(BaseModel):
+    report_type: str = "Observation"
+    who_involved: str = ""
+    what_happened: str = ""
+    where_happened: str = ""
+    when_happened: str = ""
+    notes: str = ""
+    source_reliability: str = "F"
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    related_to: str = ""
+    pin_category: str = "general"
+    pin_color: str = "#eab308"
 
 
 class MapPinCreate(BaseModel):
@@ -91,6 +108,7 @@ class FieldObjectCreate(BaseModel):
     longitude: Optional[float] = None
     status: str = "unknown"
     pin_color: str = "#eab308"
+    pin_category: str = "general"
 
 
 OBJECT_TYPES = {"person", "vehicle", "group", "location", "event"}
@@ -120,9 +138,9 @@ app = FastAPI(title="Waypoint Core API", version="0.3.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
         "http://localhost:5173",
-        "http://127.0.0.1:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -182,13 +200,15 @@ def list_lfi(limit: int = 100):
 def create_lfi(payload: LfiCreate):
     now = utc_now_iso()
     latitude, longitude = validate_coordinate_pair(payload.latitude, payload.longitude)
+    pin_cat = (payload.pin_category or "general").strip() or "general"
+    pin_col = payload.pin_color or "#eab308"
     with get_connection() as conn:
         cur = conn.execute(
             """
             INSERT INTO lfi_reports
             (report_type, who_involved, what_happened, where_happened, when_happened,
-             notes, source_reliability, latitude, longitude, related_to, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             notes, source_reliability, latitude, longitude, related_to, pin_category, pin_color, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 payload.report_type,
@@ -201,10 +221,31 @@ def create_lfi(payload: LfiCreate):
                 latitude,
                 longitude,
                 payload.related_to.strip(),
+                pin_cat,
+                pin_col,
                 now,
             ),
         )
         lfi_id = cur.lastrowid
+
+    # Auto-create map pin for this report if it has coordinates (pipeline: report -> pin)
+    if latitude is not None and longitude is not None:
+        try:
+            with get_connection() as conn:
+                conn.execute(
+                    "DELETE FROM map_pins WHERE source = 'field_report' AND source_id = ?",
+                    (str(lfi_id),),
+                )
+                label = f"RPT-{lfi_id} {payload.report_type}"[:80]
+                conn.execute(
+                    """
+                    INSERT INTO map_pins (latitude, longitude, label, source, source_id, color, category, created_at)
+                    VALUES (?, ?, ?, 'field_report', ?, ?, ?, ?)
+                    """,
+                    (latitude, longitude, label, str(lfi_id), pin_col, pin_cat, now),
+                )
+        except Exception:
+            pass  # pin creation must never break report save
 
     # Return the created record
     with get_connection() as conn:
@@ -282,6 +323,75 @@ def reopen_lfi(lfi_id: int):
     return row_to_dict(updated)
 
 
+@app.patch("/api/lfi/{lfi_id}")
+def update_lfi(lfi_id: int, payload: LfiUpdate):
+    with get_connection() as conn:
+        row = conn.execute("SELECT id FROM lfi_reports WHERE id = ?", (lfi_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Report not found.")
+        latitude, longitude = validate_coordinate_pair(payload.latitude, payload.longitude)
+        pin_cat = (payload.pin_category or "general").strip() or "general"
+        pin_col = payload.pin_color or "#eab308"
+        conn.execute(
+            """
+            UPDATE lfi_reports SET
+                report_type = ?, who_involved = ?, what_happened = ?,
+                where_happened = ?, when_happened = ?, notes = ?,
+                source_reliability = ?, latitude = ?, longitude = ?, related_to = ?,
+                pin_category = ?, pin_color = ?
+            WHERE id = ?
+            """,
+            (
+                payload.report_type,
+                payload.who_involved.strip(),
+                payload.what_happened.strip(),
+                payload.where_happened.strip(),
+                payload.when_happened.strip(),
+                payload.notes.strip(),
+                payload.source_reliability,
+                latitude,
+                longitude,
+                payload.related_to.strip(),
+                pin_cat,
+                pin_col,
+                lfi_id,
+            ),
+        )
+        updated = conn.execute("SELECT * FROM lfi_reports WHERE id = ?", (lfi_id,)).fetchone()
+
+    # Upsert auto pin on edit (supports coord/cat/color changes)
+    if latitude is not None and longitude is not None:
+        try:
+            now = utc_now_iso()
+            with get_connection() as conn:
+                conn.execute(
+                    "DELETE FROM map_pins WHERE source = 'field_report' AND source_id = ?",
+                    (str(lfi_id),),
+                )
+                label = f"RPT-{lfi_id} {payload.report_type}"[:80]
+                conn.execute(
+                    """
+                    INSERT INTO map_pins (latitude, longitude, label, source, source_id, color, category, created_at)
+                    VALUES (?, ?, ?, 'field_report', ?, ?, ?, ?)
+                    """,
+                    (latitude, longitude, label, str(lfi_id), pin_col, pin_cat, now),
+                )
+        except Exception:
+            pass
+
+    return row_to_dict(updated)
+
+
+@app.delete("/api/lfi/{lfi_id}")
+def delete_lfi(lfi_id: int):
+    with get_connection() as conn:
+        row = conn.execute("SELECT id FROM lfi_reports WHERE id = ?", (lfi_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Report not found.")
+        conn.execute("DELETE FROM lfi_reports WHERE id = ?", (lfi_id,))
+    return {"deleted": lfi_id}
+
+
 @app.post("/api/lfi/export", status_code=201)
 def export_lfi(payload: LfiExportRequest):
     if not payload.ids:
@@ -350,7 +460,7 @@ async def upload_photos(
 ):
     """
     Accept one or more photos. Process EXIF/GPS + create thumb. Return list of records.
-    related_to (form field): optional free-text note for basic linking (e.g. "même pick-up que LFI-001").
+    related_to (form field): optional free-text note for basic linking (e.g. "mÃªme pick-up que LFI-001").
     """
     results = []
     related_note = (related_to or "").strip()
@@ -564,13 +674,16 @@ def create_field_object(payload: FieldObjectCreate):
         raise HTTPException(status_code=422, detail="Object name is required.")
 
     latitude, longitude = validate_coordinate_pair(payload.latitude, payload.longitude)
+    pin_cat = (payload.pin_category or "general").strip() or "general"
+    pin_col = payload.pin_color or "#eab308"
     now = utc_now_iso()
+    obj_id = None
     with get_connection() as conn:
         cur = conn.execute(
             """
             INSERT INTO field_objects
-            (object_type, name, description, notes, latitude, longitude, status, pin_color, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (object_type, name, description, notes, latitude, longitude, status, pin_color, pin_category, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 object_type,
@@ -580,12 +693,34 @@ def create_field_object(payload: FieldObjectCreate):
                 latitude,
                 longitude,
                 status,
-                payload.pin_color or "#eab308",
+                pin_col,
+                pin_cat,
                 now,
                 now,
             ),
         )
-        row = conn.execute("SELECT * FROM field_objects WHERE id = ?", (cur.lastrowid,)).fetchone()
+        obj_id = cur.lastrowid
+        row = conn.execute("SELECT * FROM field_objects WHERE id = ?", (obj_id,)).fetchone()
+
+    # Auto-create map pin for this field object if coords (pipeline: object -> pin)
+    if obj_id is not None and latitude is not None and longitude is not None:
+        try:
+            with get_connection() as conn:
+                conn.execute(
+                    "DELETE FROM map_pins WHERE source = ? AND source_id = ?",
+                    (object_type, str(obj_id)),
+                )
+                label = f"{object_type.upper()}-{obj_id} {name}"[:80]
+                conn.execute(
+                    """
+                    INSERT INTO map_pins (latitude, longitude, label, source, source_id, color, category, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (latitude, longitude, label, object_type, str(obj_id), pin_col, pin_cat, now),
+                )
+        except Exception:
+            pass
+
     return row_to_dict(row)
 
 
@@ -712,3 +847,7 @@ def dev_clear_all():
         conn.execute("DELETE FROM links")
         conn.execute("DELETE FROM field_objects")
     return {"status": "cleared (db rows only)"}
+
+
+
+

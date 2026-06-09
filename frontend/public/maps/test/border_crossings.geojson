@@ -1,0 +1,1 @@
+﻿{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"Test Crossing","barrier":"border_control"},"geometry":{"type":"Point","coordinates":[30,10]}}]}

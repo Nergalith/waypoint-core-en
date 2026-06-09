@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+﻿import React, { useMemo, useState } from "react";
 import { createLink } from "../api";
 import { t } from "../i18n";
 
@@ -35,7 +35,7 @@ const TYPE_STYLES = {
 };
 
 export default function Connections({
-  lang = "fr",
+  lang = "en",
   links = [],
   lfiList = [],
   photoList = [],
@@ -492,3 +492,4 @@ function normalizeRelationship(value) {
   if (clean === "same_as_possible_match") return "same_as";
   return RELATIONSHIPS.includes(clean) ? clean : "related_to";
 }
+

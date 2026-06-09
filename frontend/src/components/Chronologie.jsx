@@ -1,19 +1,21 @@
-import React, { useMemo, useState } from "react";
+﻿import React, { useMemo, useState } from "react";
 import { t, translateReportType } from "../i18n";
 
-export default function Chronologie({ lang = "fr", lfiList, photoList, documentList, objectList = [] }) {
+export default function Chronologie({ lang = "en", lfiList, photoList, documentList, objectList = [] }) {
   const tt = (key, vars = {}) => t(key, lang, vars);
 
   // Memoize the merged timeline computation (avoids rebuild on every render, low CPU/mem on old hardware)
   const events = useMemo(() => {
     const evs = [];
 
-    (lfiList || []).forEach((l) => {
+    // Only finalized reports, sorted by event time (when_happened) not entry date per spec
+    (lfiList || []).filter((l) => l.status === "finalized").forEach((l) => {
       evs.push({
         id: `lfi-${l.id}`,
         type: "lfi",
         time: l.when_happened || l.created_at,
         created_at: l.created_at,
+        when: l.when_happened || "",
         summary: `${translateReportType(l.report_type, tt)}: ${l.what_happened?.slice(0, 80) || l.who_involved?.slice(0, 60) || tt("chrono.no_detail")}`,
         location: l.where_happened,
         reliability: l.source_reliability,
@@ -70,8 +72,12 @@ export default function Chronologie({ lang = "fr", lfiList, photoList, documentL
       });
     });
 
-    // Sort by created_at desc. Simple string compare, no Date parse (CPU save).
-    evs.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+    // Sort by event time (when or fallback created) desc. String compare keeps simple for low-resource.
+    evs.sort((a, b) => {
+      const ta = (a.when || a.time || a.created_at || "");
+      const tb = (b.when || b.time || b.created_at || "");
+      return tb.localeCompare(ta);
+    });
 
     return evs;
   }, [lfiList, photoList, documentList, objectList, lang]);  // deps for memo opt + lang for tt in summaries
@@ -173,7 +179,7 @@ export default function Chronologie({ lang = "fr", lfiList, photoList, documentL
                 <span style={{ fontWeight: 600 }}>
                   {eventTypeLabel(ev.type, tt)}
                 </span>
-                {" — "}
+                {" â€” "}
                 {ev.summary}
                 {ev.location && <span style={{ color: 'var(--soft)' }}> @ {ev.location}</span>}
                 {ev.reliability && (
@@ -181,7 +187,7 @@ export default function Chronologie({ lang = "fr", lfiList, photoList, documentL
                     {ev.reliability}
                   </span>
                 )}
-                {ev.has_geo && <span style={{ marginLeft: '4px' }}>📍</span>}
+                {ev.has_geo && <span style={{ marginLeft: '4px' }}>ðŸ“</span>}
                 {ev.related_to && (
                   <div style={{ fontSize: '12px', color: 'var(--accent)', marginTop: '2px' }}>
                     <strong>{tt("chrono.linked", {note: ev.related_to})}</strong>
@@ -226,4 +232,5 @@ function eventTypeLabel(type, tt) {
   if (type === "event") return tt("chrono.event");
   return tt("chrono.document");
 }
+
 

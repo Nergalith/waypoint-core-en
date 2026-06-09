@@ -145,10 +145,15 @@ def init_db() -> None:
             "finalized_at": "TEXT",
             "reopened_at": "TEXT",
             "pdf_path": "TEXT",
+            "pin_category": "TEXT NOT NULL DEFAULT 'general'",
+            "pin_color": "TEXT NOT NULL DEFAULT '#eab308'",
         })
         _ensure_columns(conn, "photos", {"related_to": "TEXT NOT NULL DEFAULT ''"})
         _ensure_columns(conn, "map_pins", {"category": "TEXT NOT NULL DEFAULT 'general'"})
-        _ensure_columns(conn, "field_objects", {"pin_color": "TEXT NOT NULL DEFAULT '#eab308'"})
+        _ensure_columns(conn, "field_objects", {
+            "pin_color": "TEXT NOT NULL DEFAULT '#eab308'",
+            "pin_category": "TEXT NOT NULL DEFAULT 'general'",
+        })
         _repair_photo_storage_paths(conn)
 
 

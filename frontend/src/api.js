@@ -1,4 +1,4 @@
-const BASE = "http://127.0.0.1:8000";
+﻿const BASE = "http://127.0.0.1:8000";
 
 export async function getLfi() {
   const r = await fetch(`${BASE}/api/lfi`);
@@ -6,7 +6,7 @@ export async function getLfi() {
   return r.json();
 }
 
-export async function finalizeLfi(id, lang = "fr") {
+export async function finalizeLfi(id, lang = "en") {
   const r = await fetch(`${BASE}/api/lfi/${id}/finalize?lang=${encodeURIComponent(lang)}`, { method: "PATCH" });
   if (!r.ok) throw new Error("Failed to finalize report");
   return r.json();
@@ -25,6 +25,22 @@ export async function createLfi(payload) {
     body: JSON.stringify(payload),
   });
   if (!r.ok) throw new Error("Failed to save LFI report");
+  return r.json();
+}
+
+export async function updateLfi(id, payload) {
+  const r = await fetch(`${BASE}/api/lfi/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error("Failed to update LFI report");
+  return r.json();
+}
+
+export async function deleteLfi(id) {
+  const r = await fetch(`${BASE}/api/lfi/${id}`, { method: "DELETE" });
+  if (!r.ok) throw new Error("Delete failed");
   return r.json();
 }
 
@@ -136,7 +152,7 @@ export async function createFieldObject(payload) {
   return r.json();
 }
 
-export async function exportLfi(ids, lang = "fr") {
+export async function exportLfi(ids, lang = "en") {
   const r = await fetch(`${BASE}/api/lfi/export`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -167,3 +183,5 @@ export function thumbUrl(thumbPath) {
   const name = thumbPath.split(/[\\/]/).pop();
   return `${BASE}/photos/thumbs/${encodeURIComponent(name)}`;
 }
+
+

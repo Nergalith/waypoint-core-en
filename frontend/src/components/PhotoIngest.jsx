@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { uploadPhotos, photoUrl, thumbUrl } from "../api";
 import { t } from "../i18n";
 
-export default function PhotoIngest({ lang = "fr", onUploaded, photos, focusedId }) {
+export default function PhotoIngest({ lang = "en", onUploaded, photos, focusedId }) {
   const tt = (key, vars = {}) => t(key, lang, vars);
 
   const [dragOver, setDragOver] = useState(false);
@@ -74,7 +74,7 @@ export default function PhotoIngest({ lang = "fr", onUploaded, photos, focusedId
         onDrop={onDrop}
         onClick={() => document.getElementById("photo-input").click()}
       >
-        <div>📥 <strong>{tt("photo.drop")}</strong></div>
+        <div>ðŸ“¥ <strong>{tt("photo.drop")}</strong></div>
         <div style={{ fontSize: 13, marginTop: 4 }}>{tt("photo.drop_or")}</div>
         <input
           id="photo-input"
@@ -125,3 +125,4 @@ export default function PhotoIngest({ lang = "fr", onUploaded, photos, focusedId
     </div>
   );
 }
+

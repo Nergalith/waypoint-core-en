@@ -1,41 +1,30 @@
-# Waypoint-Core 0.3 Product Readiness
+﻿# Waypoint Core EN Product Readiness
 
 ## Strengths
 
-- French-first MVP flow is now clear: reports, photos, documents, field objects, map, timeline, and connections all work from one local interface.
-- Offline CAR map package is present and staged for smoother loading on low-spec laptops.
-- Source navigation from map, graph, and object links moves users back to the source tab and highlights the selected item.
-- Empty states now tell operators what to do next instead of leaving blank panels.
-- Dark mode is the default, with a readable light mode option for bright rooms.
+- Clean English-only test build with empty local data.
+- Mature MVP workflow: reports, photos, documents, objects, map, timeline, connections, and graph.
+- Offline-first design with local SQLite storage and local file storage.
+- Lightweight generic test map avoids online map dependencies and avoids heavy CAR demo data.
+- Launch and close scripts use paths relative to the copied folder.
 
 ## Weaknesses
 
-- The app is still a single-user local tool; data backup, merge, and handoff remain manual.
-- Document extraction is intentionally limited. TXT/CSV are the most dependable demo formats.
-- The graph is useful for small link sets but is not meant for dense investigations.
-- Map detail depends on the included lightweight CAR package, not full offline tiles.
+- The included map is only a functional test layer, not an operational world basemap.
+- Dependency installation still requires Node.js, Python, and package availability during setup.
+- PDF/report helper remains basic and local.
+- No multi-user sync, backup workflow, or data merge workflow.
 
 ## Known Limitations
 
-- No AI analysis, OCR workflow, cloud sync, user accounts, SIGINT modules, PDF/DOCX report exports, or enterprise graph features are included.
-- PDF/DOCX text reading depends on local Python libraries being available.
-- Image text reading is not available yet.
-- Timeline summaries are generated from current records and are not a separate persisted event database.
+- No cloud services, accounts, AI, SIGINT modules, or online map APIs.
+- Document extraction is best with TXT/CSV; richer formats depend on local libraries.
+- Old hardware should use small test files first.
 
 ## Demo Readiness Assessment
 
-Waypoint-Core is ready for a controlled 0.3 MVP demonstration if the demo uses prepared sample data:
-
-- Create one field report.
-- Use the map click action to fill report position.
-- Upload one GPS photo.
-- Upload one simple TXT/CSV document with a decimal coordinate.
-- Create one field object with a position.
-- Link the report, photo, document, and object.
-- Confirm map pins, timeline entries, graph relationships, and source highlighting.
-
-The demo should avoid unsupported file types, very large map interactions, and advanced analysis claims.
+Ready for English sandbox testing and thumb-drive transfer after local verification. Start with empty data, create one report, add a map-picked position, upload one small photo/document, create one field object, create one connection, then confirm map, timeline, and graph behavior.
 
 ## Recommended Next Milestone
 
-Run a field-style usability test with a low-training operator on an older laptop. Capture friction in the report/photo/document/map/link workflow, then fix only the highest-impact usability and reliability issues before adding new capability.
+Run a ToughBook field test using only clean sample data. Capture launch time, map responsiveness, upload behavior, and operator confusion before adding new features.

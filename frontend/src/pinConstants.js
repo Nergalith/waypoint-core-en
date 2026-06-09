@@ -1,31 +1,31 @@
-import * as L from "leaflet";
+﻿import * as L from "leaflet";
 
 export const PIN_CATEGORIES = {
-  person:       { labelEn: "Person",                  labelFr: "Personne",                    symbol: "◉" },
-  vehicle:      { labelEn: "Vehicle",                 labelFr: "Véhicule",                    symbol: "⬡" },
-  group:        { labelEn: "Group / Armed Group",     labelFr: "Groupe / Groupe armé",        symbol: "✶" },
-  organization: { labelEn: "Organization",            labelFr: "Organisation",                symbol: "■" },
-  military:     { labelEn: "Military",                labelFr: "Militaire",                   symbol: "✪" },
-  police:       { labelEn: "Police",                  labelFr: "Police",                      symbol: "⭐" },
-  checkpoint:   { labelEn: "Checkpoint",              labelFr: "Poste de contrôle",           symbol: "⬛" },
-  government:   { labelEn: "Government Building",     labelFr: "Bâtiment gouvernemental",     symbol: "★" },
-  hospital:     { labelEn: "Hospital",                labelFr: "Hôpital",                     symbol: "+" },
-  church:       { labelEn: "Church / Religious Site", labelFr: "Église / Site religieux",     symbol: "✝" },
-  utilities:    { labelEn: "Power / Utilities",       labelFr: "Électricité / Services",      symbol: "⚙" },
-  incident:     { labelEn: "Incident / Event",        labelFr: "Incident / Événement",        symbol: "▲" },
-  shooting:     { labelEn: "Shooting",                labelFr: "Tir / Fusillade",             symbol: "✕" },
-  explosion:    { labelEn: "Explosion",               labelFr: "Explosion",                   symbol: "✱" },
-  riot:         { labelEn: "Civil Disturbance",       labelFr: "Troubles civils",             symbol: "⬆" },
-  location:     { labelEn: "Named Location",          labelFr: "Lieu nommé",                  symbol: "⌂" },
-  document:     { labelEn: "Document Location",       labelFr: "Emplacement document",        symbol: "≡" },
-  evidence:     { labelEn: "Evidence Point",          labelFr: "Point de preuve",             symbol: "◆" },
-  general:      { labelEn: "General / Other",         labelFr: "Général / Autre",             symbol: "●" },
+  person:       { labelEn: "Person",                  labelFr: "Personne",                    symbol: "â—‰" },
+  vehicle:      { labelEn: "Vehicle",                 labelFr: "VÃ©hicule",                    symbol: "â¬¡" },
+  group:        { labelEn: "Group / Armed Group",     labelFr: "Groupe / Groupe armÃ©",        symbol: "âœ¶" },
+  organization: { labelEn: "Organization",            labelFr: "Organisation",                symbol: "â– " },
+  military:     { labelEn: "Military",                labelFr: "Militaire",                   symbol: "âœª" },
+  police:       { labelEn: "Police",                  labelFr: "Police",                      symbol: "â­" },
+  checkpoint:   { labelEn: "Checkpoint",              labelFr: "Poste de contrÃ´le",           symbol: "â¬›" },
+  government:   { labelEn: "Government Building",     labelFr: "BÃ¢timent gouvernemental",     symbol: "â˜…" },
+  hospital:     { labelEn: "Hospital",                labelFr: "HÃ´pital",                     symbol: "+" },
+  church:       { labelEn: "Church / Religious Site", labelFr: "Ã‰glise / Site religieux",     symbol: "âœ" },
+  utilities:    { labelEn: "Power / Utilities",       labelFr: "Ã‰lectricitÃ© / Services",      symbol: "âš™" },
+  incident:     { labelEn: "Incident / Event",        labelFr: "Incident / Ã‰vÃ©nement",        symbol: "â–²" },
+  shooting:     { labelEn: "Shooting",                labelFr: "Tir / Fusillade",             symbol: "âœ•" },
+  explosion:    { labelEn: "Explosion",               labelFr: "Explosion",                   symbol: "âœ±" },
+  riot:         { labelEn: "Civil Disturbance",       labelFr: "Troubles civils",             symbol: "â¬†" },
+  location:     { labelEn: "Named Location",          labelFr: "Lieu nommÃ©",                  symbol: "âŒ‚" },
+  document:     { labelEn: "Document Location",       labelFr: "Emplacement document",        symbol: "â‰¡" },
+  evidence:     { labelEn: "Evidence Point",          labelFr: "Point de preuve",             symbol: "â—†" },
+  general:      { labelEn: "General / Other",         labelFr: "GÃ©nÃ©ral / Autre",             symbol: "â—" },
 };
 
 export const STATUS_COLORS = {
   hostile:  { hex: "#dc2626", labelEn: "Hostile / Threat / Danger",           labelFr: "Hostile / Menace / Danger" },
-  friendly: { hex: "#16a34a", labelEn: "Friendly / Safe / Confirmed",         labelFr: "Ami / Sûr / Confirmé" },
-  unknown:  { hex: "#eab308", labelEn: "Unknown / Unconfirmed / Caution",      labelFr: "Inconnu / Non confirmé / Attention" },
+  friendly: { hex: "#16a34a", labelEn: "Friendly / Safe / Confirmed",         labelFr: "Ami / SÃ»r / ConfirmÃ©" },
+  unknown:  { hex: "#eab308", labelEn: "Unknown / Unconfirmed / Caution",      labelFr: "Inconnu / Non confirmÃ© / Attention" },
   neutral:  { hex: "#2563eb", labelEn: "Neutral / Civilian / No affiliation",  labelFr: "Neutre / Civil / Sans affiliation" },
   inactive: { hex: "#64748b", labelEn: "Inactive / Historical / No status",    labelFr: "Inactif / Historique / Sans statut" },
 };
@@ -49,3 +49,4 @@ export function createPinIcon(category, color) {
   _pinIconCache[key] = icon;
   return icon;
 }
+

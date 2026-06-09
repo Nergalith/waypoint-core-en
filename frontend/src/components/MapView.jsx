@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+﻿import React, { useEffect, useRef, useState } from "react";
 import * as L from "leaflet";
 import { createPin, deletePin } from "../api";
 import { t } from "../i18n";
@@ -6,16 +6,26 @@ import { createPinIcon, DEFAULT_PIN_COLOR, PIN_CATEGORIES, STATUS_COLORS } from 
 
 const MAP_DEFAULT_CENTER = [20, 0];
 const INITIAL_ZOOM = 2;
+const MAP_PACKAGE_BASE = "/maps/test/";
 const OBJECT_SOURCES = ["person", "vehicle", "group", "location", "event"];
-const DEFAULT_LAYER_VISIBILITY = { pins: true };
+const DEFAULT_LAYER_VISIBILITY = {
+  prefectures: false,
+  roads: false,
+  rivers: false,
+  places: false,
+  pins: true,
+};
+const CHUNK_SIZE = 120;
+const DEV_MAP_LOG = import.meta.env?.DEV;
 
 export default function MapView({ lang = "en", lfiList, photoList, documentList, objectList = [], pinList, focusCoordinates, refreshAll, onUseCoordinates, onOpenSource }) {
   const tt = (key, vars = {}) => t(key, lang, vars);
 
   const mapRef = useRef(null);
   const leafletMap = useRef(null);
-  const layersRef = useRef({ pins: null });
+  const layersRef = useRef({ pins: null, country: null, prefectures: null, roads: null, rivers: null, places: null, borders: null });
   const layerVisibilityRef = useRef(DEFAULT_LAYER_VISIBILITY);
+  const packageBoundsRef = useRef(null);
   const pickCoordsModeRef = useRef(false);
   const [status, setStatus] = useState(tt("map.status_ready"));
   const [showHelp, setShowHelp] = useState(false);
@@ -39,23 +49,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   const allGeoItems = React.useMemo(() => {
     const items = [];
 
-    (lfiList || []).forEach((l) => {
-      if (l.latitude != null && l.longitude != null) {
-        items.push({
-          id: `lfi-${l.id}`,
-          lat: l.latitude,
-          lon: l.longitude,
-          label: `${l.report_type}: ${l.what_happened?.slice(0, 45) || l.who_involved?.slice(0, 35) || tt("chrono.lfi")}`,
-          color: DEFAULT_PIN_COLOR,
-          category: "incident",
-          source: "lfi",
-          sourceId: l.id,
-          reliability: l.source_reliability,
-          sourceLabel: tt("object.field_report_label", { id: l.id, text: l.what_happened || l.who_involved || tt("lfi.no_detail") }),
-        });
-      }
-    });
-
+    // Photos (GPS) remain synthesized (special ingest pins, not in map_pins table)
     (photoList || []).forEach((p) => {
       if (p.latitude != null && p.longitude != null) {
         items.push({
@@ -63,8 +57,8 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
           lat: p.latitude,
           lon: p.longitude,
           label: `${tt("chrono.photo")} ${p.original_filename?.slice(0, 28)}`,
-          color: DEFAULT_PIN_COLOR,
-          category: "document",
+          color: "#42c8ff", // photo blue per existing behavior
+          category: "general",
           source: "photo",
           sourceId: p.id,
           sourceLabel: tt("object.photo_label", { id: p.id, text: p.original_filename }),
@@ -74,41 +68,30 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
 
     const documentsById = new Map((documentList || []).map((doc) => [Number(doc.id), doc]));
 
+    // All pins now drive reports (field_report), objects (person/vehicle/...), manual, document.
+    // This makes the report/object -> auto pin pipeline visible immediately.
     (pinList || []).forEach((pin) => {
-      if (pin.source === "manual" || pin.source === "document") {
-        const doc = pin.source === "document" ? documentsById.get(Number(pin.source_id)) : null;
-        items.push({
-          id: `pin-${pin.id}`,
-          lat: pin.latitude,
-          lon: pin.longitude,
-          label: pin.label || tt("map.prompt_default"),
-          color: pin.color || DEFAULT_PIN_COLOR,
-          category: pin.category || (pin.source === "document" ? "document" : "general"),
-          source: pin.source,
-          sourceId: pin.source === "document" ? pin.source_id : pin.id,
-          sourceLabel: doc ? tt("object.document_label", { id: doc.id, text: doc.original_filename }) : undefined,
-        });
-      }
-    });
-
-    (objectList || []).forEach((object) => {
-      if (object.latitude != null && object.longitude != null) {
-        items.push({
-          id: `object-${object.id}`,
-          lat: object.latitude,
-          lon: object.longitude,
-          label: object.name || tt(`object.${object.object_type}`),
-          color: object.pin_color || DEFAULT_PIN_COLOR,
-          category: object.object_type === "event" ? "incident" : object.object_type,
-          source: object.object_type,
-          sourceId: object.id,
-          sourceLabel: tt("object.field_object_label", { id: object.id, text: object.name || tt(`object.${object.object_type}`) }),
-        });
-      }
+      const isDoc = pin.source === "document";
+      const doc = isDoc ? documentsById.get(Number(pin.source_id)) : null;
+      const isReport = pin.source === "field_report";
+      const isObj = ["person", "vehicle", "group", "location", "event"].includes(pin.source);
+      const label = pin.label || tt("map.prompt_default");
+      items.push({
+        id: `pin-${pin.id}`,
+        lat: pin.latitude,
+        lon: pin.longitude,
+        label: isReport ? label : (isObj ? label : label),
+        color: pin.color || DEFAULT_PIN_COLOR,
+        category: pin.category || (isDoc ? "document" : "general"),
+        source: pin.source,
+        sourceId: pin.source_id != null ? pin.source_id : pin.id,
+        sourceLabel: isReport ? (label || tt("object.field_report_label", { id: pin.source_id, text: "" })) : (doc ? tt("object.document_label", { id: doc.id, text: doc.original_filename }) : undefined),
+        reliability: isReport ? undefined : undefined,
+      });
     });
 
     return items;
-  }, [lfiList, photoList, documentList, objectList, pinList, lang]);
+  }, [photoList, documentList, pinList, lang]);
 
   useEffect(() => {
     if (leafletMap.current || !mapRef.current) return;
@@ -127,10 +110,18 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       renderer: L.canvas({ padding: 0.25 }),
     });
 
-    layersRef.current = { pins: L.layerGroup().addTo(map) };
+    layersRef.current = {
+      country: L.layerGroup().addTo(map),
+      prefectures: L.layerGroup(),
+      roads: L.layerGroup(),
+      rivers: L.layerGroup(),
+      places: L.layerGroup(),
+      borders: L.layerGroup(),
+      pins: L.layerGroup(),
+    };
     applyLayerVisibility(map);
     leafletMap.current = map;
-    setStatus(tt("map.status_ready"));
+    loadOfflineMapPackage(map);
 
     map.on("click", async (e) => {
       const { lat, lng } = e.latlng;
@@ -204,17 +195,19 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       `;
       marker.bindPopup(popupHtml);
 
-      if ((item.source === "lfi" || item.source === "photo" || item.source === "document" || isObjectSource(item.source)) && item.sourceId) {
+      const canOpen = item.sourceId && (item.source === "field_report" || item.source === "lfi" || item.source === "photo" || item.source === "document" || isObjectSource(item.source));
+      if (canOpen) {
         marker.on("popupopen", () => {
           setTimeout(() => {
             const container = marker.getPopup().getElement();
             if (container && !container.querySelector(".source-btn")) {
+              const src = item.source === "field_report" ? "lfi" : item.source;
               const btn = document.createElement("button");
-              btn.textContent = item.source === "lfi" ? tt("map.open_lfi") : (item.source === "photo" ? tt("map.open_photo") : (item.source === "document" ? tt("map.open_document") : tt("map.open_object")));
+              btn.textContent = src === "lfi" ? tt("map.open_lfi") : (src === "photo" ? tt("map.open_photo") : (src === "document" ? tt("map.open_document") : tt("map.open_object")));
               btn.className = "source-btn";
               btn.style.cssText = "margin-top:6px;padding:4px 8px;font-size:11px;background:#122230;color:#edf5f8;border:1px solid #42c8ff;border-radius:4px;cursor:pointer";
               btn.onclick = () => {
-                if (onOpenSource) onOpenSource(item.source, item.sourceId);
+                if (onOpenSource) onOpenSource(src, item.sourceId);
                 marker.closePopup();
               };
               const content = container.querySelector(".leaflet-popup-content");
@@ -254,10 +247,140 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     setStatus(tt("map.status_pins", { count: items.length }));
   }
 
-  function centerOnDefault() {
+  async function loadOfflineMapPackage(map) {
+    const loadStart = performance.now();
+    mapLog("map load start");
+    try {
+      const [metadata, admin0, admin1] = await Promise.all([
+        fetchJson(`${MAP_PACKAGE_BASE}metadata.json`),
+        fetchJson(`${MAP_PACKAGE_BASE}admin0.geojson`),
+        fetchJson(`${MAP_PACKAGE_BASE}admin1_prefectures.geojson`),
+      ]);
+
+      mapLog("base layers fetched", {
+        admin0: featureCount(admin0),
+        admin1: featureCount(admin1),
+      });
+
+      const admin0Layer = await addGeoJsonChunked(admin0, layersRef.current.country, {
+        style: {
+          color: "#42c8ff",
+          weight: 2.2,
+          fillColor: "#0d2f3a",
+          fillOpacity: 0.24,
+        },
+        onEachFeature: (feature, layer) => {
+          const name = getName(feature.properties) || tt("map.car_popup");
+          layer.bindPopup(`${escapeHtml(name)}<br/><small>${tt("map.car_popup")}</small>`);
+        },
+      }, "country");
+
+      packageBoundsRef.current = admin0Layer.getBounds();
+      if (packageBoundsRef.current.isValid()) {
+        map.fitBounds(packageBoundsRef.current.pad(0.08));
+      }
+
+      await addGeoJsonChunked(admin1, layersRef.current.prefectures, {
+        style: {
+          color: "#2f6f80",
+          weight: 0.9,
+          fillOpacity: 0,
+          dashArray: "4 4",
+        },
+        onEachFeature: (feature, layer) => {
+          const name = getName(feature.properties);
+          if (name) layer.bindTooltip(name, { permanent: true, direction: "center", className: "admin-label" });
+        },
+      }, "prefectures");
+
+      applyLayerVisibility(map);
+      bringPinsToFront();
+      setStatus(tt("map.status_base"));
+      mapLog("base layers ready", { ms: Math.round(performance.now() - loadStart) });
+
+      await pause(80);
+      await loadDeferredLayer("rivers", "waterways.geojson", {
+        interactive: false,
+        style: {
+          color: "#3aaee8",
+          weight: 0.8,
+          opacity: 0.62,
+        },
+      });
+
+      await pause(60);
+      await loadDeferredLayer("roads", "roads.geojson", {
+        interactive: false,
+        style: (feature) => ({
+          color: roadColor(feature.properties?.highway),
+          weight: roadWeight(feature.properties?.highway),
+          opacity: 0.72,
+        }),
+      });
+
+      await pause(60);
+      await loadDeferredLayer("places", "places.geojson", {
+        pointToLayer: (feature, latlng) => {
+          const place = feature.properties?.place;
+          return L.circleMarker(latlng, {
+            radius: place === "city" ? 4.8 : place === "town" ? 3.8 : 2.6,
+            color: "#071118",
+            weight: 0.8,
+            fillColor: place === "city" ? "#d4a96a" : "#b8916a",
+            fillOpacity: 0.86,
+          });
+        },
+        onEachFeature: (feature, layer) => {
+          const place = feature.properties?.place;
+          const name = getName(feature.properties);
+          if (name && (place === "city" || place === "town")) {
+            layer.bindTooltip(name, { direction: "top", sticky: true });
+          }
+        },
+      });
+
+      await pause(40);
+      await loadDeferredLayer("borders", "border_crossings.geojson", {
+        pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
+          radius: 4.8,
+          color: "#f5c8a0",
+          weight: 1,
+          fillColor: "#d4704a",
+          fillOpacity: 0.86,
+        }),
+        onEachFeature: (feature, layer) => {
+          const name = getName(feature.properties) || tt("map.border_crossing");
+          layer.bindTooltip(name, { direction: "top", sticky: true });
+        },
+      });
+
+      const layerCount = metadata.layers?.length || 6;
+      bringPinsToFront();
+      mapLog("map load end", { ms: Math.round(performance.now() - loadStart) });
+      setStatus(tt("map.status_package", { count: layerCount }));
+    } catch (err) {
+      mapLog("map load failed", err);
+      setStatus(tt("map.status_package_error"));
+    }
+  }
+
+  async function loadDeferredLayer(key, file, options) {
+    const collection = await timedFetchJson(file);
+    setStatus(tt("map.status_loading_layer", { layer: tt(`map.layer_${key}`) }));
+    await addGeoJsonChunked(collection, layersRef.current[key], options, key);
+    applyLayerVisibility();
+    bringPinsToFront();
+  }
+
+  function centerOnDefaultMap() {
     const map = leafletMap.current;
     if (!map) return;
-    map.setView(MAP_DEFAULT_CENTER, INITIAL_ZOOM);
+    if (packageBoundsRef.current?.isValid()) {
+      map.fitBounds(packageBoundsRef.current.pad(0.08));
+    } else {
+      map.setView(MAP_DEFAULT_CENTER, INITIAL_ZOOM);
+    }
+    setStatus(tt("map.status_focus", { lat: MAP_DEFAULT_CENTER[0].toFixed(1), lon: MAP_DEFAULT_CENTER[1].toFixed(1) }) + " — test map");
   }
 
   function clearManualPins() {
@@ -291,11 +414,26 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     }
   }
 
+  function toggleLayer(key) {
+    setLayerVisibility((current) => ({ ...current, [key]: !current[key] }));
+  }
+
   function applyLayerVisibility(map = leafletMap.current) {
-    if (!map || !layersRef.current.pins) return;
-    const visible = layerVisibilityRef.current.pins !== false;
-    if (visible && !map.hasLayer(layersRef.current.pins)) layersRef.current.pins.addTo(map);
-    if (!visible && map.hasLayer(layersRef.current.pins)) map.removeLayer(layersRef.current.pins);
+    if (!map) return;
+    const visibility = layerVisibilityRef.current;
+    Object.entries({
+      prefectures: layersRef.current.prefectures,
+      roads: layersRef.current.roads,
+      rivers: layersRef.current.rivers,
+      places: layersRef.current.places,
+      borders: layersRef.current.borders,
+      pins: layersRef.current.pins,
+    }).forEach(([key, layer]) => {
+      if (!layer) return;
+      const visible = key === "borders" ? true : visibility[key] !== false;
+      if (visible && !map.hasLayer(layer)) layer.addTo(map);
+      if (!visible && map.hasLayer(layer)) map.removeLayer(layer);
+    });
   }
 
   function bringPinsToFront() {
@@ -309,9 +447,10 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <h2 style={{ margin: 0 }}>{tt("map.title")}</h2>
         <div className="map-actions">
-          <button className="small-action" onClick={centerOnDefault} style={{ marginRight: 6 }}>{tt("map.center")}</button>
+          <button className="small-action" title={tt("map.center")} onClick={centerOnDefaultMap} style={{ marginRight: 6 }}>{tt("map.center")}</button>
           <button
             className="small-action"
+            title={pickCoordsMode ? tt("map.pick_cancel") : tt("map.pick_coords")}
             onClick={() => {
               setPickCoordsMode((v) => !v);
               setStatus(!pickCoordsMode ? tt("map.status_pick_coords") : tt("map.status_ready"));
@@ -320,11 +459,24 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
           >
             {pickCoordsMode ? tt("map.pick_cancel") : tt("map.pick_coords")}
           </button>
-          <button className="small-action" onClick={clearManualPins} style={{ background: "rgba(255, 90, 79, 0.14)", color: "var(--text)", borderColor: "var(--danger)" }}>{tt("map.clear")}</button>
-          <button className="small-action" onClick={() => setShowHelp(!showHelp)} style={{ marginLeft: 6 }}>{tt("map.help")}</button>
+          <button className="small-action" title={tt("map.clear")} onClick={clearManualPins} style={{ background: "rgba(255, 90, 79, 0.14)", color: "var(--text)", borderColor: "var(--danger)" }}>{tt("map.clear")}</button>
+          <button className="small-action" title={tt("map.help_title")} onClick={() => setShowHelp(!showHelp)} style={{ marginLeft: 6 }}>{tt("map.help")}</button>
         </div>
       </div>
       <p className="tab-intro">{tt("map.intro")}</p>
+
+      <div className="map-layer-toggles" aria-label={tt("map.layers")}>
+        {["prefectures", "roads", "rivers", "places", "pins"].map((key) => (
+          <label key={key}>
+            <input
+              type="checkbox"
+              checked={layerVisibility[key]}
+              onChange={() => toggleLayer(key)}
+            />
+            {tt(`map.layer_${key}`)}
+          </label>
+        ))}
+      </div>
 
       <div className="map-container">
         <div id="map" ref={mapRef} />
@@ -428,7 +580,11 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
             </div>
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button className="small-action" onClick={() => setPendingPin(null)} disabled={pinSaving}>
+              <button
+                className="small-action"
+                onClick={() => setPendingPin(null)}
+                disabled={pinSaving}
+              >
                 {tt("map.modal_cancel")}
               </button>
               <button
@@ -437,7 +593,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
                 disabled={pinSaving}
                 style={{ background: "rgba(234,179,8,0.18)", borderColor: "#eab308", color: "var(--text)" }}
               >
-                {pinSaving ? "…" : tt("map.modal_save")}
+                {pinSaving ? "â€¦" : tt("map.modal_save")}
               </button>
             </div>
           </div>
@@ -445,6 +601,87 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       )}
     </div>
   );
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not load ${url}`);
+  return response.json();
+}
+
+async function timedFetchJson(file) {
+  const start = performance.now();
+  const collection = await fetchJson(`${MAP_PACKAGE_BASE}${file}`);
+  mapLog("layer fetched", {
+    file,
+    features: featureCount(collection),
+    ms: Math.round(performance.now() - start),
+  });
+  return collection;
+}
+
+async function addGeoJsonChunked(collection, targetGroup, options, label) {
+  const features = collection?.features || [];
+  const start = performance.now();
+  const layer = L.geoJSON(null, options).addTo(targetGroup);
+
+  if (features.length === 0) {
+    mapLog("layer rendered", { label, features: 0, ms: 0 });
+    return layer;
+  }
+
+  for (let index = 0; index < features.length; index += CHUNK_SIZE) {
+    layer.addData({
+      type: "FeatureCollection",
+      features: features.slice(index, index + CHUNK_SIZE),
+    });
+    await pause(0);
+  }
+
+  mapLog("layer rendered", {
+    label,
+    features: features.length,
+    ms: Math.round(performance.now() - start),
+  });
+  return layer;
+}
+
+function featureCount(collection) {
+  return collection?.features?.length || 0;
+}
+
+function pause(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function mapLog(message, detail = {}) {
+  if (DEV_MAP_LOG) {
+    console.info(`[Waypoint map] ${message}`, detail);
+  }
+}
+
+function getName(properties = {}) {
+  return properties.name || properties.adm1_name || properties.adm0_name || properties.ADM1_FR || properties.ADM1_EN || properties.admin1Name_fr || properties.admin1Name_en || properties.shapeName || properties.admin0Name_en || "";
+}
+
+function roadColor(type = "") {
+  const colors = {
+    trunk: "#f6a43a",
+    primary: "#f4d35e",
+    secondary: "#d7e87b",
+    tertiary: "#b5c9a3",
+  };
+  return colors[String(type).toLowerCase()] || "#8ca1ad";
+}
+
+function roadWeight(type = "") {
+  const weights = {
+    trunk: 2.1,
+    primary: 1.8,
+    secondary: 1.35,
+    tertiary: 1,
+  };
+  return weights[String(type).toLowerCase()] || 0.8;
 }
 
 function isObjectSource(source) {
@@ -459,3 +696,6 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+
+

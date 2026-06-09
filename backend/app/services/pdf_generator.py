@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 from datetime import datetime
@@ -15,6 +15,16 @@ from reportlab.platypus import (
     HRFlowable, Image, Paragraph, SimpleDocTemplate, Spacer,
 )
 
+# Offline map rendering (Pillow already a backend dep via photo processor; stdlib json)
+import json
+from io import BytesIO
+try:
+    from PIL import Image as PILImage, ImageDraw, ImageFont
+    from reportlab.lib.utils import ImageReader
+    _HAS_RENDER_DEPS = True
+except Exception:
+    _HAS_RENDER_DEPS = False
+
 ROOT_DIR = Path(__file__).resolve().parents[3]
 REPORTS_DIR = ROOT_DIR / "Waypoint Reports"
 
@@ -22,7 +32,7 @@ MONTH_ABBREV = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
                 "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 
 # ---------------------------------------------------------------------------
-# Font registration — Arial TTF for full Latin-extended / UTF-8 support.
+# Font registration â€” Arial TTF for full Latin-extended / UTF-8 support.
 # Falls back to built-in Helvetica if the system font is missing.
 # ---------------------------------------------------------------------------
 
@@ -47,25 +57,25 @@ _FONT_REGULAR, _FONT_BOLD = _init_fonts()
 
 _LABELS: dict[str, dict[str, str]] = {
     "fr": {
-        "header_single":  "WAYPOINT CORE — Rapport de terrain",
-        "header_bundle":  "WAYPOINT CORE — Rapport groupé",
-        "generated_on":   "rapport(s) — généré le",
-        "finalized":      "FINALISÉ",
-        "who":            "Qui impliqué",
+        "header_single":  "WAYPOINT CORE â€” Rapport de terrain",
+        "header_bundle":  "WAYPOINT CORE â€” Rapport groupÃ©",
+        "generated_on":   "rapport(s) â€” gÃ©nÃ©rÃ© le",
+        "finalized":      "FINALISÃ‰",
+        "who":            "Qui impliquÃ©",
         "what":           "Quoi",
-        "where":          "Où",
+        "where":          "OÃ¹",
         "when":           "Quand (terrain)",
         "notes":          "Notes",
-        "related":        "Lié à",
-        "reliability":    "Fiabilité source",
-        "coords":         "Coordonnées GPS",
-        "linked_objects": "Objets liés",
-        "linked_photos":  "Photos liées",
+        "related":        "LiÃ© Ã ",
+        "reliability":    "FiabilitÃ© source",
+        "coords":         "CoordonnÃ©es GPS",
+        "linked_objects": "Objets liÃ©s",
+        "linked_photos":  "Photos liÃ©es",
     },
     "en": {
-        "header_single":  "WAYPOINT CORE — Field Report",
-        "header_bundle":  "WAYPOINT CORE — Bundled Report",
-        "generated_on":   "report(s) — generated",
+        "header_single":  "WAYPOINT CORE â€” Field Report",
+        "header_bundle":  "WAYPOINT CORE â€” Bundled Report",
+        "generated_on":   "report(s) â€” generated",
         "finalized":      "FINALIZED",
         "who":            "Who involved",
         "what":           "What happened",
@@ -82,20 +92,20 @@ _LABELS: dict[str, dict[str, str]] = {
 
 _RELIABILITY_LABELS: dict[str, dict[str, str]] = {
     "fr": {
-        "A": "A — Source sûre",
-        "B": "B — Source généralement fiable",
-        "C": "C — Source assez fiable",
-        "D": "D — Source peu fiable",
-        "E": "E — Source non fiable",
-        "F": "F — Fiabilité inconnue",
+        "A": "A â€” Source sÃ»re",
+        "B": "B â€” Source gÃ©nÃ©ralement fiable",
+        "C": "C â€” Source assez fiable",
+        "D": "D â€” Source peu fiable",
+        "E": "E â€” Source non fiable",
+        "F": "F â€” FiabilitÃ© inconnue",
     },
     "en": {
-        "A": "A — Reliable source",
-        "B": "B — Usually reliable",
-        "C": "C — Fairly reliable",
-        "D": "D — Not usually reliable",
-        "E": "E — Unreliable",
-        "F": "F — Reliability unknown",
+        "A": "A â€” Reliable source",
+        "B": "B â€” Usually reliable",
+        "C": "C â€” Fairly reliable",
+        "D": "D â€” Not usually reliable",
+        "E": "E â€” Unreliable",
+        "F": "F â€” Reliability unknown",
     },
 }
 
@@ -177,6 +187,96 @@ def _build_doc(path: Path) -> SimpleDocTemplate:
 
 
 # ---------------------------------------------------------------------------
+# Offline static test map renderer (uses only local admin0.geojson + Pillow)
+# Renders the generic test boundary + pin(s) at report location(s). Small PNG for embedding.
+# For bundles, pass multiple points to show all on one map.
+# ---------------------------------------------------------------------------
+
+def _render_static_map(points: list[tuple[float, float, str]], width: int = 320, height: int = 180) -> bytes | None:
+    """Return PNG bytes for a simple test-map outline + labeled pin(s). points = [(lat, lon, label), ...].
+    Completely offline. Linear scale is sufficient for the small offline test package.
+    """
+    if not _HAS_RENDER_DEPS or not points:
+        return None
+
+    map_path = ROOT_DIR / "frontend" / "public" / "maps" / "test" / "admin0.geojson"
+    if not map_path.exists():
+        return None
+
+    try:
+        with open(map_path, "r", encoding="utf-8") as f:
+            gj = json.load(f)
+        feat = gj["features"][0]
+        ring = feat["geometry"]["coordinates"][0]
+        boundary = [(float(c[0]), float(c[1])) for c in ring]  # (lon, lat)
+    except Exception:
+        return None
+
+    if not boundary:
+        return None
+
+    # bounds from boundary + all points (lat,lon order in points)
+    all_lons = [b[0] for b in boundary]
+    all_lats = [b[1] for b in boundary]
+    for lat, lon, _ in points:
+        try:
+            all_lons.append(float(lon))
+            all_lats.append(float(lat))
+        except Exception:
+            pass
+
+    if not all_lons or not all_lats:
+        return None
+
+    pad = 0.8
+    min_lon = min(all_lons) - pad
+    max_lon = max(all_lons) + pad
+    min_lat = min(all_lats) - pad
+    max_lat = max(all_lats) + pad
+
+    W, H = int(width), int(height)
+    margin = 12
+    img = PILImage.new("RGB", (W, H), "white")
+    draw = ImageDraw.Draw(img)
+
+    def proj(lon: float, lat: float):
+        x = margin + (float(lon) - min_lon) / (max_lon - min_lon) * (W - 2 * margin)
+        y = margin + (max_lat - float(lat)) / (max_lat - min_lat) * (H - 2 * margin)
+        return int(max(margin, min(W - margin, x))), int(max(margin, min(H - margin, y)))
+
+    # Test boundary (light fill + outline)
+    poly = [proj(lon, lat) for lon, lat in boundary]
+    draw.polygon(poly, fill=(232, 244, 255), outline=(25, 70, 130), width=2)
+
+    # pins + labels (red dot + small text)
+    font = ImageFont.load_default()
+    for lat, lon, label in points:
+        try:
+            px, py = proj(float(lon), float(lat))
+            r = 5
+            # pin dot
+            draw.ellipse([px - r, py - r, px + r, py + r], fill=(200, 30, 30), outline=(255, 220, 220))
+            # tiny stem
+            draw.line([px, py + r, px, py + r + 4], fill=(80, 80, 80), width=1)
+            # label
+            lab = str(label or "")[:9]
+            if lab:
+                draw.text((px + 5, py - 3), lab, fill=(20, 20, 20), font=font)
+        except Exception:
+            continue
+
+    # very small context label
+    try:
+        draw.text((4, 2), "TEST", fill=(90, 90, 90), font=font)
+    except Exception:
+        pass
+
+    bio = BytesIO()
+    img.save(bio, format="PNG")
+    return bio.getvalue()
+
+
+# ---------------------------------------------------------------------------
 # Story builder
 # ---------------------------------------------------------------------------
 
@@ -188,6 +288,7 @@ def _report_story(
     lbl: dict[str, str],
     rel_lbl: dict[str, str],
     as_section: bool = False,
+    include_individual_map: bool = True,
 ) -> list:
     story: list = []
     heading = styles["h2"] if as_section else styles["h1"]
@@ -197,13 +298,13 @@ def _report_story(
     created = report.get("created_at", "")
     date_display = created.replace("T", " ").replace("Z", "") if created else ""
 
-    story.append(Paragraph(f"RPT-{rid:03d} — {rtype}", heading))
+    story.append(Paragraph(f"RPT-{rid:03d} â€” {rtype}", heading))
     if date_display:
         story.append(Paragraph(date_display, styles["muted"]))
 
     if report.get("status") == "finalized":
         fin = (report.get("finalized_at") or "").replace("T", " ").replace("Z", "")
-        story.append(Paragraph(f"{lbl['finalized']} — {fin}", styles["locked"]))
+        story.append(Paragraph(f"{lbl['finalized']} â€” {fin}", styles["locked"]))
 
     story.append(Spacer(1, 4 * mm))
 
@@ -232,6 +333,22 @@ def _report_story(
         story.append(Paragraph(lbl["coords"], styles["label"]))
         story.append(Paragraph(f"{lat:.5f}, {lon:.5f}", styles["normal"]))
 
+    # Embed small offline static map (test-map boundary + pin at this report's location).
+    # Uses local GeoJSON only. For bundles the caller can suppress per-report maps
+    # and provide a combined overview instead.
+    if include_individual_map and _HAS_RENDER_DEPS and lat is not None and lon is not None:
+        try:
+            rid = report.get("id", "?")
+            lab = f"RPT-{int(rid):03d}" if str(rid).isdigit() else f"RPT-{rid}"
+            png = _render_static_map([(lat, lon, lab)])
+            if png:
+                ir = ImageReader(BytesIO(png))
+                story.append(Spacer(1, 2 * mm))
+                story.append(Image(ir, width=58 * mm, height=33 * mm))
+                story.append(Spacer(1, 1 * mm))
+        except Exception:
+            pass  # never break PDF generation on map render issues
+
     if links:
         story.append(Spacer(1, 3 * mm))
         story.append(Paragraph(lbl["linked_objects"], styles["label"]))
@@ -239,7 +356,7 @@ def _report_story(
             src      = lk.get("source_label", "")
             tgt      = lk.get("target_label", "")
             rel_type = lk.get("relationship_type", "")
-            story.append(Paragraph(f"• {src}  →  {rel_type}  →  {tgt}", styles["small"]))
+            story.append(Paragraph(f"â€¢ {src}  â†’  {rel_type}  â†’  {tgt}", styles["small"]))
 
     if photos:
         story.append(Spacer(1, 3 * mm))
@@ -300,6 +417,29 @@ def generate_bundle_pdf(reports: list, photos_by_id: dict, links_by_id: dict, la
         Paragraph(f"{len(reports)} {lbl['generated_on']} {date_str}", styles["muted"]),
         Spacer(1, 8 * mm),
     ]
+
+    # For bundles: render ONE combined map with ALL report locations/pins (as requested).
+    # Insert overview early; suppress per-section individual maps below.
+    if _HAS_RENDER_DEPS:
+        locs = []
+        for rep in reports:
+            la = rep.get("latitude")
+            lo = rep.get("longitude")
+            if la is not None and lo is not None:
+                rid = rep.get("id", "?")
+                lab = f"RPT-{int(rid):03d}" if str(rid).isdigit() else f"RPT-{rid}"
+                locs.append((la, lo, lab))
+        if locs:
+            try:
+                png = _render_static_map(locs)
+                if png:
+                    story.append(Paragraph("CAR â€” Emplacements / Locations overview", styles["label"]))
+                    ir = ImageReader(BytesIO(png))
+                    story.append(Image(ir, width=72 * mm, height=40 * mm))
+                    story.append(Spacer(1, 4 * mm))
+            except Exception:
+                pass
+
     for i, report in enumerate(reports):
         if i > 0:
             story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#d1d5db"), spaceAfter=6 * mm))
@@ -310,8 +450,11 @@ def generate_bundle_pdf(reports: list, photos_by_id: dict, links_by_id: dict, la
             links_by_id.get(rid, []),
             styles, lbl, rel_lbl,
             as_section=True,
+            include_individual_map=False,
         )
         story.append(Spacer(1, 6 * mm))
 
     doc.build(story)
     return path
+
+

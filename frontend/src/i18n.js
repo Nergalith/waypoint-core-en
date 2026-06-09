@@ -1,31 +1,41 @@
-import en from "./locales/en";
+﻿import en from "./locales/en";
 
 export const DEFAULT_LANG = "en";
 
 const translations = { en };
 
-export function getTranslations() {
-  return en;
+export function getTranslations(lang = DEFAULT_LANG) {
+  return translations[lang] || en;
 }
 
-export function t(key, _lang, vars = {}) {
-  let str = en[key] || key;
+export function t(key, lang = DEFAULT_LANG, vars = {}) {
+  const trans = getTranslations(lang);
+  let str = trans[key] || key;
   Object.keys(vars).forEach((name) => {
     str = str.replace(new RegExp(`\\{${name}\\}`, "g"), vars[name]);
   });
   return str;
 }
 
-export function labelFor(prefix, value) {
-  return t(`${prefix}.${value}`);
+export function labelFor(prefix, value, lang = DEFAULT_LANG) {
+  return t(`${prefix}.${value}`, lang);
 }
+
+export const LANGUAGES = [
+  { code: "fr", label: "FranÃ§ais" },
+  { code: "en", label: "English" },
+];
 
 const REPORT_TYPE_KEYS = {
   Observation: "type.Observation",
-  Patrol:      "type.Patrol",
-  Witness:     "type.Witness",
-  Rumor:       "type.Rumor",
-  Other:       "type.Other",
+  Patrol: "type.Patrol",
+  Witness: "type.Witness",
+  Rumor: "type.Rumor",
+  Other: "type.Other",
+  "Rapport de patrouille": "type.Patrol",
+  "DÃ©claration de tÃ©moin": "type.Witness",
+  Rumeur: "type.Rumor",
+  Autre: "type.Other",
 };
 
 export function translateReportType(value, tt) {
@@ -33,3 +43,5 @@ export function translateReportType(value, tt) {
 }
 
 export default translations;
+
+

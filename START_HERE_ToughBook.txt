@@ -1,0 +1,33 @@
+﻿WAYPOINT CORE EN - TOUGHBOOK TRANSFER CHECKLIST
+
+Goal
+Copy this folder to a thumb drive and run it on an older Windows laptop for offline testing.
+
+Before copying
+1. Confirm this is the English test folder:
+   C:\Users\VICTUS\Documents\GitHub\waypoint-core-en
+2. Confirm data is clean:
+   - data\waypoint.db exists but has no records.
+   - data\photos is empty.
+   - data\photos\thumbs is empty.
+   - data\documents is empty.
+3. Confirm frontend/public/maps/test exists.
+4. Do not copy from waypoint-core/data.
+5. Do not copy Waypoint Reports or CAR map caches into this folder.
+
+Copying
+1. Copy the entire waypoint-core-en folder to the thumb drive.
+2. Keep the folder structure intact.
+3. On the ToughBook, copy the folder to a local drive if possible. Running from USB may be slower.
+
+First run on ToughBook
+1. Double-click Open Waypoint Core.vbs.
+2. Let setup install backend/frontend dependencies if needed.
+3. Open http://127.0.0.1:5173 if the browser does not open automatically.
+4. Create one report, one manual map pin, one field object, and one connection.
+5. Double-click Close Waypoint Core.vbs when finished.
+
+Notes
+- The launch scripts use paths relative to this copied folder.
+- Internet is not required during normal use after dependencies are installed.
+- The included map is a tiny offline test map for workflow testing, not a real basemap.

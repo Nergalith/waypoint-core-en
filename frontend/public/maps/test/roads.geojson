@@ -1,0 +1,1 @@
+﻿{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"Main Test Road","highway":"primary"},"geometry":{"type":"LineString","coordinates":[[-18,2],[-8,5],[2,7],[12,8],[26,10]]}},{"type":"Feature","properties":{"name":"North Track","highway":"secondary"},"geometry":{"type":"LineString","coordinates":[[-12,18],[-2,15],[9,16],[22,20]]}}]}

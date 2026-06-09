@@ -1,12 +1,13 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { createFieldObject } from "../api";
 import { t } from "../i18n";
+import { PIN_CATEGORIES, STATUS_COLORS } from "../pinConstants";
 
 const OBJECT_TYPES = ["person", "vehicle", "group", "location", "event"];
 const STATUSES = ["active", "unknown", "archived"];
 
 export default function FieldObjects({
-  lang = "fr",
+  lang = "en",
   objects = [],
   links = [],
   lfiList = [],
@@ -26,6 +27,8 @@ export default function FieldObjects({
     latitude: "",
     longitude: "",
     status: "unknown",
+    pin_category: "general",
+    pin_color: "#eab308",
   });
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState(null);
@@ -83,6 +86,8 @@ export default function FieldObjects({
         description: form.description,
         notes: form.notes,
         status: form.status,
+        pin_category: form.pin_category || "general",
+        pin_color: form.pin_color || "#eab308",
         ...coords,
       });
       setStatus(tt("objects.created"));
@@ -94,6 +99,8 @@ export default function FieldObjects({
         latitude: "",
         longitude: "",
         status: "unknown",
+        pin_category: current.pin_category || "general",
+        pin_color: current.pin_color || "#eab308",
       }));
       if (onCreated) await onCreated();
     } catch {
@@ -141,6 +148,26 @@ export default function FieldObjects({
           <label>{tt("lfi.lon_label")}</label>
           <input value={form.longitude} onChange={(e) => update("longitude", e.target.value)} placeholder={tt("lfi.lon_placeholder")} inputMode="decimal" />
         </div>
+
+        {/* Pin category/color for map pipeline (same as reports) */}
+        <div>
+          <label>{tt("objects.pin_category_label") || "CatÃ©gorie point carte"}</label>
+          <select value={form.pin_category || "general"} onChange={(e) => update("pin_category", e.target.value)}>
+            {Object.entries(PIN_CATEGORIES).map(([k, c]) => (
+              <option key={k} value={k}>{c.symbol} {tt(`pin.cat.${k}`) || k}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label>{tt("objects.pin_status_label") || "Couleur statut"}</label>
+          <div style={{display:'flex', gap:4, flexWrap:'wrap'}}>
+            {Object.entries(STATUS_COLORS).map(([k, c]) => (
+              <button type="button" key={k} onClick={() => update("pin_color", c.hex)} title={tt(`pin.status.${k}`)||k}
+                style={{width:22,height:22,borderRadius:3,background:c.hex, border: (form.pin_color===c.hex)?'2px solid #fff':'1px solid #555', cursor:'pointer'}} />
+            ))}
+          </div>
+        </div>
+
         <button className="big-button" type="submit" title={tt("objects.create")}>{tt("objects.create")}</button>
       </form>
 
@@ -252,3 +279,4 @@ function canOpen(type, id) {
 function normalizeRelationship(value) {
   return String(value || "related_to").toLowerCase().replace(/\s+/g, "_");
 }
+

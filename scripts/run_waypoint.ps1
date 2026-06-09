@@ -1,11 +1,11 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 param(
     [switch]$NoBrowser,
     [switch]$SkipInstall
 )
 $ErrorActionPreference = "Stop"
 
-try { $Host.UI.RawUI.WindowTitle = "Waypoint Core - Field Intelligence MVP" } catch {}
+try { $Host.UI.RawUI.WindowTitle = "Waypoint Core EN - Test Build" } catch {}
 
 $root     = Split-Path -Parent $PSScriptRoot
 $backend  = Join-Path $root "backend"
@@ -36,8 +36,8 @@ function Run-Step($message, $filePath, $arguments, $workingDirectory) {
 }
 
 Write-Host "======================================================" -ForegroundColor Cyan
-Write-Host "  Waypoint Core - Field Intelligence MVP" -ForegroundColor Cyan
-Write-Host "  Local-first | Bilingual | Offline map | Low-spec PCs" -ForegroundColor Cyan
+Write-Host "  Waypoint Core EN - Test Build" -ForegroundColor Cyan
+Write-Host "  Local-first | English | Offline test map | Low-spec PCs" -ForegroundColor Cyan
 Write-Host "======================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -121,3 +121,4 @@ try {
     Start-Sleep -Milliseconds 400
     Write-Host "Done." -ForegroundColor Green
 }
+

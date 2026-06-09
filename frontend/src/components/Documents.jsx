@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { createDocumentPin, uploadDocuments } from "../api";
 import { t } from "../i18n";
 
-export default function Documents({ lang = "fr", documents = [], onUploaded, onPinCreated, focusedId }) {
+export default function Documents({ lang = "en", documents = [], onUploaded, onPinCreated, focusedId }) {
   const tt = (key, vars = {}) => t(key, lang, vars);
   const [notes, setNotes] = useState("");
   const [relatedTo, setRelatedTo] = useState("");
@@ -189,3 +189,4 @@ function keywordLabel(group, tt) {
   const translated = tt(`docs.keyword.${group}`);
   return translated.startsWith("docs.keyword.") ? String(group || "") : translated;
 }
+
