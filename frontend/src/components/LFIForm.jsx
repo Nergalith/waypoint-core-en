@@ -398,17 +398,17 @@ export default function LFIForm({
         </div>
 
         {/* NEW: Pin category and status color for auto map pin pipeline */}
-        <label>{tt("lfi.pin_category_label") || "CatÃ©gorie du point (carte)"}</label>
+        <label>{tt("lfi.pin_category_label") || "Categorie du point (carte)"}</label>
         <select
           value={form.pin_category || "general"}
           onChange={(e) => update("pin_category", e.target.value)}
         >
           {Object.entries(PIN_CATEGORIES).map(([key, cat]) => (
-            <option key={key} value={key}>{cat.symbol} {tt(`pin.cat.${key}`) || cat.labelFr || key}</option>
+            <option key={key} value={key}>{cat.symbol} {tt(`pin.cat.${key}`) || cat.labelEn || key}</option>
           ))}
         </select>
 
-        <label>{tt("lfi.pin_status_label") || "Couleur / Statut du point"}</label>
+        <label>{tt("lfi.pin_status_label") || "Pin status color"}</label>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {Object.entries(STATUS_COLORS).map(([key, c]) => {
             const active = (form.pin_color || "#eab308") === c.hex;
@@ -417,7 +417,7 @@ export default function LFIForm({
                 type="button"
                 key={key}
                 onClick={() => update("pin_color", c.hex)}
-                title={tt(`pin.status.${key}`) || c.labelFr}
+                title={tt(`pin.status.${key}`) || c.labelEn}
                 style={{
                   width: 28, height: 28, borderRadius: 4,
                   background: c.hex,
@@ -430,7 +430,7 @@ export default function LFIForm({
           })}
         </div>
         <div className="tooltip" style={{ marginTop: 2, fontSize: 11 }}>
-          {tt("map.colors") || "Rouge=hostile, Vert=ami, Jaune=inconnu, Bleu=neutre, Gris=inactif. Forme = catÃ©gorie."}
+          {tt("map.colors") || "Rouge=hostile, Vert=ami, Jaune=inconnu, Bleu=neutre, Gris=inactif. Forme = categorie."}
         </div>
 
         <button type="submit" className="big-button" disabled={saving}>
@@ -452,7 +452,7 @@ export default function LFIForm({
                   disabled={selectedIds.size === 0 || generating}
                   style={{ fontSize: 11, background: "rgba(234,179,8,0.15)", borderColor: "#eab308" }}
                 >
-                  {generating ? "â€¦" : tt("lfi.generate_report_btn", { count: selectedIds.size })}
+                  {generating ? "..." : tt("lfi.generate_report_btn", { count: selectedIds.size })}
                 </button>
                 <button className="small-action" onClick={exitSelectMode} disabled={generating} style={{ fontSize: 11 }}>
                   {tt("lfi.select_cancel")}
@@ -515,13 +515,13 @@ export default function LFIForm({
                     padding: "1px 6px", borderRadius: 3, fontWeight: 700,
                     flexShrink: 0, alignSelf: "center",
                   }}>
-                    ðŸ”’ {tt("lfi.status.finalized")}
+                    LOCKED {tt("lfi.status.finalized")}
                   </span>
                 )}
                 <span style={{ flex: 1 }}>
-                  {translateReportType(l.report_type, tt)} â€” {l.what_happened?.slice(0, 70) || l.who_involved?.slice(0, 50) || tt("lfi.no_detail")}
-                  {l.latitude && " ðŸ“"}
-                  {l.related_to && <span style={{color: 'var(--accent)'}}> â€¢ {tt("common.linked", {note: l.related_to.slice(0,30)})}</span>}
+                  {translateReportType(l.report_type, tt)} - {l.what_happened?.slice(0, 70) || l.who_involved?.slice(0, 50) || tt("lfi.no_detail")}
+                  {l.latitude && " GPS"}
+                  {l.related_to && <span style={{color: 'var(--accent)'}}> | {tt("common.linked", {note: l.related_to.slice(0,30)})}</span>}
                 </span>
               </div>
               {isFinalized && l.finalized_at && (
@@ -537,7 +537,7 @@ export default function LFIForm({
                       onClick={() => handleEditDraft(l)}
                       style={{ fontSize: 11 }}
                     >
-                      {tt("lfi.edit_btn") || "Modifier"}
+                      {tt("lfi.edit_btn") || "Edit"}
                     </button>
                   )}
                   {isFinalized ? (
@@ -547,7 +547,7 @@ export default function LFIForm({
                       disabled={isBusy}
                       style={{ fontSize: 11 }}
                     >
-                      {isBusy ? "â€¦" : tt("lfi.unlock_btn")}
+                      {isBusy ? "..." : tt("lfi.unlock_btn")}
                     </button>
                   ) : (
                     <button
@@ -556,7 +556,7 @@ export default function LFIForm({
                       disabled={isBusy}
                       style={{ fontSize: 11, background: "rgba(234,179,8,0.12)", borderColor: "#eab308" }}
                     >
-                      {isBusy ? "â€¦" : tt("lfi.finalize_btn")}
+                      {isBusy ? "..." : tt("lfi.finalize_btn")}
                     </button>
                   )}
                   <button
@@ -565,7 +565,7 @@ export default function LFIForm({
                     disabled={isDeleting || isBusy}
                     style={{ fontSize: 11, background: "rgba(239,68,68,0.10)", borderColor: "rgba(239,68,68,0.5)", color: "#ef4444" }}
                   >
-                    {isDeleting ? "â€¦" : tt("lfi.delete_btn")}
+                    {isDeleting ? "..." : tt("lfi.delete_btn")}
                   </button>
                 </div>
               )}

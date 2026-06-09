@@ -151,7 +151,7 @@ export default function FieldObjects({
 
         {/* Pin category/color for map pipeline (same as reports) */}
         <div>
-          <label>{tt("objects.pin_category_label") || "CatÃ©gorie point carte"}</label>
+          <label>{tt("objects.pin_category_label") || "Categorie point carte"}</label>
           <select value={form.pin_category || "general"} onChange={(e) => update("pin_category", e.target.value)}>
             {Object.entries(PIN_CATEGORIES).map(([k, c]) => (
               <option key={k} value={k}>{c.symbol} {tt(`pin.cat.${k}`) || k}</option>

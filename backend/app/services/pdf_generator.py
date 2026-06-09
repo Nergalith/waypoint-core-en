@@ -32,7 +32,7 @@ MONTH_ABBREV = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
                 "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 
 # ---------------------------------------------------------------------------
-# Font registration â€” Arial TTF for full Latin-extended / UTF-8 support.
+# Font registration - Arial TTF for full Latin-extended / UTF-8 support.
 # Falls back to built-in Helvetica if the system font is missing.
 # ---------------------------------------------------------------------------
 
@@ -56,66 +56,42 @@ _FONT_REGULAR, _FONT_BOLD = _init_fonts()
 # ---------------------------------------------------------------------------
 
 _LABELS: dict[str, dict[str, str]] = {
-    "fr": {
-        "header_single":  "WAYPOINT CORE â€” Rapport de terrain",
-        "header_bundle":  "WAYPOINT CORE â€” Rapport groupÃ©",
-        "generated_on":   "rapport(s) â€” gÃ©nÃ©rÃ© le",
-        "finalized":      "FINALISÃ‰",
-        "who":            "Qui impliquÃ©",
-        "what":           "Quoi",
-        "where":          "OÃ¹",
-        "when":           "Quand (terrain)",
-        "notes":          "Notes",
-        "related":        "LiÃ© Ã ",
-        "reliability":    "FiabilitÃ© source",
-        "coords":         "CoordonnÃ©es GPS",
-        "linked_objects": "Objets liÃ©s",
-        "linked_photos":  "Photos liÃ©es",
-    },
     "en": {
-        "header_single":  "WAYPOINT CORE â€” Field Report",
-        "header_bundle":  "WAYPOINT CORE â€” Bundled Report",
-        "generated_on":   "report(s) â€” generated",
-        "finalized":      "FINALIZED",
-        "who":            "Who involved",
-        "what":           "What happened",
-        "where":          "Where",
-        "when":           "When (field)",
-        "notes":          "Notes",
-        "related":        "Related to",
-        "reliability":    "Source reliability",
-        "coords":         "GPS coordinates",
+        "header_single": "WAYPOINT CORE - Field Report",
+        "header_bundle": "WAYPOINT CORE - Bundled Report",
+        "generated_on": "report(s) - generated",
+        "finalized": "FINALIZED",
+        "who": "Who involved",
+        "what": "What happened",
+        "where": "Where",
+        "when": "When (field)",
+        "notes": "Notes",
+        "related": "Related to",
+        "reliability": "Source reliability",
+        "coords": "GPS coordinates",
         "linked_objects": "Linked objects",
-        "linked_photos":  "Linked photos",
+        "linked_photos": "Linked photos",
     },
 }
 
 _RELIABILITY_LABELS: dict[str, dict[str, str]] = {
-    "fr": {
-        "A": "A â€” Source sÃ»re",
-        "B": "B â€” Source gÃ©nÃ©ralement fiable",
-        "C": "C â€” Source assez fiable",
-        "D": "D â€” Source peu fiable",
-        "E": "E â€” Source non fiable",
-        "F": "F â€” FiabilitÃ© inconnue",
-    },
     "en": {
-        "A": "A â€” Reliable source",
-        "B": "B â€” Usually reliable",
-        "C": "C â€” Fairly reliable",
-        "D": "D â€” Not usually reliable",
-        "E": "E â€” Unreliable",
-        "F": "F â€” Reliability unknown",
+        "A": "A - Reliable source",
+        "B": "B - Usually reliable",
+        "C": "C - Fairly reliable",
+        "D": "D - Not usually reliable",
+        "E": "E - Unreliable",
+        "F": "F - Reliability unknown",
     },
 }
 
 
 def _lbl(lang: str) -> dict[str, str]:
-    return _LABELS.get(lang, _LABELS["fr"])
+    return _LABELS.get(lang, _LABELS["en"])
 
 
 def _rel_labels(lang: str) -> dict[str, str]:
-    return _RELIABILITY_LABELS.get(lang, _RELIABILITY_LABELS["fr"])
+    return _RELIABILITY_LABELS.get(lang, _RELIABILITY_LABELS["en"])
 
 
 # ---------------------------------------------------------------------------
@@ -298,13 +274,13 @@ def _report_story(
     created = report.get("created_at", "")
     date_display = created.replace("T", " ").replace("Z", "") if created else ""
 
-    story.append(Paragraph(f"RPT-{rid:03d} â€” {rtype}", heading))
+    story.append(Paragraph(f"RPT-{rid:03d} - {rtype}", heading))
     if date_display:
         story.append(Paragraph(date_display, styles["muted"]))
 
     if report.get("status") == "finalized":
         fin = (report.get("finalized_at") or "").replace("T", " ").replace("Z", "")
-        story.append(Paragraph(f"{lbl['finalized']} â€” {fin}", styles["locked"]))
+        story.append(Paragraph(f"{lbl['finalized']} - {fin}", styles["locked"]))
 
     story.append(Spacer(1, 4 * mm))
 
@@ -356,7 +332,7 @@ def _report_story(
             src      = lk.get("source_label", "")
             tgt      = lk.get("target_label", "")
             rel_type = lk.get("relationship_type", "")
-            story.append(Paragraph(f"â€¢ {src}  â†’  {rel_type}  â†’  {tgt}", styles["small"]))
+            story.append(Paragraph(f"| {src}  ->  {rel_type}  ->  {tgt}", styles["small"]))
 
     if photos:
         story.append(Spacer(1, 3 * mm))
@@ -383,11 +359,11 @@ def _report_story(
 # Public API
 # ---------------------------------------------------------------------------
 
-def generate_single_pdf(report: dict[str, Any], photos: list, links: list, lang: str = "fr") -> Path:
+def generate_single_pdf(report: dict[str, Any], photos: list, links: list, lang: str = "en") -> Path:
     created = report.get("created_at", datetime.utcnow().isoformat())
     dt      = _parse_dt(created)
     folder  = ensure_reports_dir(dt.year, dt.month)
-    path    = folder / _single_filename(report.get("id", 0), report.get("report_type", "Rapport"), created)
+    path    = folder / _single_filename(report.get("id", 0), report.get("report_type", "Report"), created)
 
     lbl     = _lbl(lang)
     rel_lbl = _rel_labels(lang)
@@ -402,7 +378,7 @@ def generate_single_pdf(report: dict[str, Any], photos: list, links: list, lang:
     return path
 
 
-def generate_bundle_pdf(reports: list, photos_by_id: dict, links_by_id: dict, lang: str = "fr") -> Path:
+def generate_bundle_pdf(reports: list, photos_by_id: dict, links_by_id: dict, lang: str = "en") -> Path:
     now    = datetime.utcnow()
     folder = ensure_reports_dir(now.year, now.month)
     path   = folder / _bundle_filename(len(reports))
@@ -433,7 +409,7 @@ def generate_bundle_pdf(reports: list, photos_by_id: dict, links_by_id: dict, la
             try:
                 png = _render_static_map(locs)
                 if png:
-                    story.append(Paragraph("CAR â€” Emplacements / Locations overview", styles["label"]))
+                    story.append(Paragraph("Test Map - Locations overview", styles["label"]))
                     ir = ImageReader(BytesIO(png))
                     story.append(Image(ir, width=72 * mm, height=40 * mm))
                     story.append(Spacer(1, 4 * mm))

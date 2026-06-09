@@ -1,4 +1,4 @@
-﻿import en from "./locales/en";
+import en from "./locales/en";
 
 export const DEFAULT_LANG = "en";
 
@@ -22,7 +22,6 @@ export function labelFor(prefix, value, lang = DEFAULT_LANG) {
 }
 
 export const LANGUAGES = [
-  { code: "fr", label: "FranÃ§ais" },
   { code: "en", label: "English" },
 ];
 
@@ -32,10 +31,6 @@ const REPORT_TYPE_KEYS = {
   Witness: "type.Witness",
   Rumor: "type.Rumor",
   Other: "type.Other",
-  "Rapport de patrouille": "type.Patrol",
-  "DÃ©claration de tÃ©moin": "type.Witness",
-  Rumeur: "type.Rumor",
-  Autre: "type.Other",
 };
 
 export function translateReportType(value, tt) {
@@ -43,5 +38,3 @@ export function translateReportType(value, tt) {
 }
 
 export default translations;
-
-

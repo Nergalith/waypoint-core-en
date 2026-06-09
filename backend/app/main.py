@@ -460,7 +460,7 @@ async def upload_photos(
 ):
     """
     Accept one or more photos. Process EXIF/GPS + create thumb. Return list of records.
-    related_to (form field): optional free-text note for basic linking (e.g. "mÃªme pick-up que LFI-001").
+    related_to (form field): optional free-text note for basic linking (e.g. "same pickup as RPT-001").
     """
     results = []
     related_note = (related_to or "").strip()
@@ -815,7 +815,7 @@ def create_pin(payload: MapPinCreate):
             (
                 latitude,
                 longitude,
-                payload.label.strip()[:80] or "Observation manuelle",
+                payload.label.strip()[:80] or "Manual observation",
                 payload.source,
                 payload.source_id,
                 color,

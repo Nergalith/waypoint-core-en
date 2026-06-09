@@ -380,7 +380,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     } else {
       map.setView(MAP_DEFAULT_CENTER, INITIAL_ZOOM);
     }
-    setStatus(tt("map.status_focus", { lat: MAP_DEFAULT_CENTER[0].toFixed(1), lon: MAP_DEFAULT_CENTER[1].toFixed(1) }) + " — test map");
+    setStatus(tt("map.status_focus", { lat: MAP_DEFAULT_CENTER[0].toFixed(1), lon: MAP_DEFAULT_CENTER[1].toFixed(1) }) + " - test map");
   }
 
   function clearManualPins() {
@@ -593,7 +593,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
                 disabled={pinSaving}
                 style={{ background: "rgba(234,179,8,0.18)", borderColor: "#eab308", color: "var(--text)" }}
               >
-                {pinSaving ? "â€¦" : tt("map.modal_save")}
+                {pinSaving ? "..." : tt("map.modal_save")}
               </button>
             </div>
           </div>

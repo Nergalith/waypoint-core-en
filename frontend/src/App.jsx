@@ -265,7 +265,7 @@ export default function App() {
         {/* Always show a tiny combined status bar when not on map */}
         {active !== "map" && active !== "chronologie" && (
           <div className="card" style={{ padding: "10px 14px", fontSize: 13 }}>
-            <strong>{tt("status.terrain")}</strong> {tt("status.lfi_count", {count: lfiList.length})} â€¢ {tt("status.photo_count", {count: photoList.length})} â€¢ {tt("status.doc_count", {count: documentList.length})} â€¢ {tt("status.object_count", {count: objectList.length})} â€¢ {tt("status.link_count", {count: linkList.length})} â€¢ {tt("status.pin_count", {count: pinList.length})}.
+            <strong>{tt("status.terrain")}</strong> {tt("status.lfi_count", {count: lfiList.length})} | {tt("status.photo_count", {count: photoList.length})} | {tt("status.doc_count", {count: documentList.length})} | {tt("status.object_count", {count: objectList.length})} | {tt("status.link_count", {count: linkList.length})} | {tt("status.pin_count", {count: pinList.length})}.
             {tt("status.map_hint")}
             {storageDisplay != null && (
               <span style={{ marginLeft: 12, color: "var(--muted)", fontSize: 12 }}>

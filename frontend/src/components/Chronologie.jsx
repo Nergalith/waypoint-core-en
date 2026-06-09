@@ -179,7 +179,7 @@ export default function Chronologie({ lang = "en", lfiList, photoList, documentL
                 <span style={{ fontWeight: 600 }}>
                   {eventTypeLabel(ev.type, tt)}
                 </span>
-                {" â€” "}
+                {" - "}
                 {ev.summary}
                 {ev.location && <span style={{ color: 'var(--soft)' }}> @ {ev.location}</span>}
                 {ev.reliability && (
@@ -187,7 +187,7 @@ export default function Chronologie({ lang = "en", lfiList, photoList, documentL
                     {ev.reliability}
                   </span>
                 )}
-                {ev.has_geo && <span style={{ marginLeft: '4px' }}>ðŸ“</span>}
+                {ev.has_geo && <span style={{ marginLeft: '4px' }}>GPS</span>}
                 {ev.related_to && (
                   <div style={{ fontSize: '12px', color: 'var(--accent)', marginTop: '2px' }}>
                     <strong>{tt("chrono.linked", {note: ev.related_to})}</strong>

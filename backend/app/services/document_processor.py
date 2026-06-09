@@ -13,15 +13,15 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 COORD_RE = re.compile(r"(?<!\d)([-+]?(?:[1-8]?\d(?:\.\d+)?|90(?:\.0+)?))\s*,\s*([-+]?(?:1[0-7]\d(?:\.\d+)?|[1-9]?\d(?:\.\d+)?|180(?:\.0+)?))(?!\d)")
 DATE_RE = re.compile(r"\b(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})\b", re.IGNORECASE)
 ENTITY_RE = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b")
-PLACE_HINT_RE = re.compile(r"\b(?:at|near|in|from|toward|towards|route|checkpoint|village|market|bridge|road|poste|pres de|vers|route de)\s+([A-Z][A-Za-zÀ-ÿ' -]{2,40})", re.IGNORECASE)
+PLACE_HINT_RE = re.compile(r"\b(?:at|near|in|from|toward|towards|route|checkpoint|village|market|bridge|road)\s+([A-Z][A-Za-z' -]{2,40})", re.IGNORECASE)
 
 KEYWORD_GROUPS = {
-    "vehicles": ["vehicle", "truck", "pickup", "pick-up", "toyota", "motorbike", "moto", "voiture", "vehicule"],
-    "checkpoints": ["checkpoint", "check point", "poste", "barrier", "barriere"],
-    "incidents": ["incident", "attack", "ambush", "theft", "kidnap", "shooting", "attaque", "embuscade", "vol"],
-    "groups": ["group", "militia", "armed men", "gang", "groupe", "milice", "hommes armes"],
-    "weapons": ["weapon", "rifle", "ak", "gun", "grenade", "arme", "fusil"],
-    "locations": ["village", "market", "bridge", "road", "river", "route", "marche", "pont", "riviere"],
+    "vehicles": ["vehicle", "truck", "pickup", "pick-up", "toyota", "motorbike", "motorcycle"],
+    "checkpoints": ["checkpoint", "check point", "barrier", "roadblock"],
+    "incidents": ["incident", "attack", "ambush", "theft", "kidnap", "shooting"],
+    "groups": ["group", "militia", "armed men", "gang"],
+    "weapons": ["weapon", "rifle", "ak", "gun", "grenade"],
+    "locations": ["village", "market", "bridge", "road", "river", "route"],
 }
 
 

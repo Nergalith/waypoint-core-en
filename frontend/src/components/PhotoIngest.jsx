@@ -74,7 +74,7 @@ export default function PhotoIngest({ lang = "en", onUploaded, photos, focusedId
         onDrop={onDrop}
         onClick={() => document.getElementById("photo-input").click()}
       >
-        <div>ðŸ“¥ <strong>{tt("photo.drop")}</strong></div>
+        <div> <strong>{tt("photo.drop")}</strong></div>
         <div style={{ fontSize: 13, marginTop: 4 }}>{tt("photo.drop_or")}</div>
         <input
           id="photo-input"
