@@ -127,6 +127,8 @@ def init_db() -> None:
                 longitude REAL,
                 status TEXT NOT NULL DEFAULT 'unknown',
                 pin_color TEXT NOT NULL DEFAULT '#eab308',
+                pin_category TEXT NOT NULL DEFAULT 'general',
+                location_description TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );

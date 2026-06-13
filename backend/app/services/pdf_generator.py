@@ -349,18 +349,14 @@ def _report_story(
     # Uses local GeoJSON only. For bundles the caller can suppress per-report maps
     # and provide a combined overview instead.
     if include_individual_map and lat is not None and lon is not None:
-        if not _HAS_RENDER_DEPS:
-            raise RuntimeError("PDF map image failed: image rendering libraries are unavailable.")
         try:
-            lab = str(rnum)
-            png = _render_static_map([(lat, lon, lab)])
-            if not png:
-                raise RuntimeError("static map returned no image")
-            story.append(Spacer(1, 2 * mm))
-            story.append(Image(BytesIO(png), width=58 * mm, height=33 * mm))
-            story.append(Spacer(1, 1 * mm))
-        except Exception as exc:
-            raise RuntimeError(f"PDF map image failed: {exc}") from exc
+            png = _render_static_map([(lat, lon, str(rnum))])
+            if png:
+                story.append(Spacer(1, 2 * mm))
+                story.append(Image(BytesIO(png), width=58 * mm, height=33 * mm))
+                story.append(Spacer(1, 1 * mm))
+        except Exception:
+            pass  # map render failure must not block PDF generation
 
     if links:
         story.append(Spacer(1, 3 * mm))
@@ -443,17 +439,14 @@ def generate_bundle_pdf(reports: list, photos_by_id: dict, links_by_id: dict, la
             lab = rep.get("report_number") or (f"RPT-{int(rid):03d}" if str(rid).isdigit() else f"RPT-{rid}")
             locs.append((la, lo, lab))
     if locs:
-        if not _HAS_RENDER_DEPS:
-            raise RuntimeError("PDF map image failed: image rendering libraries are unavailable.")
         try:
             png = _render_static_map(locs)
-            if not png:
-                raise RuntimeError("static map returned no image")
-            story.append(Paragraph("Map - Locations", styles["label"]))
-            story.append(Image(BytesIO(png), width=72 * mm, height=40 * mm))
-            story.append(Spacer(1, 4 * mm))
-        except Exception as exc:
-            raise RuntimeError(f"PDF map image failed: {exc}") from exc
+            if png:
+                story.append(Paragraph("Map - Locations", styles["label"]))
+                story.append(Image(BytesIO(png), width=72 * mm, height=40 * mm))
+                story.append(Spacer(1, 4 * mm))
+        except Exception:
+            pass  # map render failure must not block PDF generation
 
     for i, report in enumerate(reports):
         if i > 0:

@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
-import { createLfi, deleteLfi, exportLfi, finalizeLfi, reopenLfi, updateLfi } from "../api";
+import { createLfi, deleteLfi, downloadReportUrl, exportLfi, finalizeLfi, reopenLfi, updateLfi } from "../api";
 import { t, translateReportType } from "../i18n";
 import { PIN_CATEGORIES, STATUS_COLORS } from "../pinConstants";
 
@@ -112,6 +112,7 @@ export default function LFIForm({
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [generating, setGenerating] = useState(false);
+  const [downloadFile, setDownloadFile] = useState(null);
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -266,11 +267,13 @@ export default function LFIForm({
   async function handleExport() {
     if (selectedIds.size === 0 || generating) return;
     setGenerating(true);
+    setDownloadFile(null);
     try {
       const result = await exportLfi(Array.from(selectedIds), lang);
       setStatus(tt("lfi.report_generated", { filename: result.filename }));
+      setDownloadFile(result.filename);
       exitSelectMode();
-      setTimeout(() => setStatus(""), 7000);
+      setTimeout(() => { setStatus(""); setDownloadFile(null); }, 30000);
     } catch {
       setStatus(tt("lfi.export_error"));
       setTimeout(() => setStatus(""), 4200);
@@ -505,6 +508,17 @@ export default function LFIForm({
       </form>
 
       {status && <div className="status">{status}</div>}
+      {downloadFile && (
+        <div style={{ marginTop: 6 }}>
+          <a
+            href={downloadReportUrl(downloadFile)}
+            download={downloadFile}
+            style={{ color: "var(--accent)", fontSize: 13, textDecoration: "underline" }}
+          >
+            ⬇ {tt("lfi.download_btn")}
+          </a>
+        </div>
+      )}
 
       <div style={{ marginTop: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>

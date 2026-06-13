@@ -17,19 +17,26 @@ export default function PhotoIngest({ lang = "en", onUploaded, photos, recentLfi
     const list = photos || [];
     if (viewAll || currentReportContext == null) return list;
     const ctx = String(currentReportContext);
+    const ctxReport = (recentLfi || []).find(r => String(r.id) === ctx);
+    const ctxNum = ctxReport?.report_number || null;
     return list.filter(p => {
       const hasLink = (links || []).some(lk =>
         (lk.source_type === "photo" && String(lk.source_id) === String(p.id) && lk.target_type === "field_report" && String(lk.target_id) === ctx) ||
         (lk.target_type === "photo" && String(lk.target_id) === String(p.id) && lk.source_type === "field_report" && String(lk.source_id) === ctx)
       );
       if (hasLink) return true;
-      if (p.related_to && (p.related_to.includes(ctx) || p.related_to.includes(`RPT-${ctx}`))) return true;
+      if (p.related_to) {
+        if (p.related_to.includes(ctx) || p.related_to.includes(`RPT-${ctx}`)) return true;
+        if (ctxNum && p.related_to.includes(ctxNum)) return true;
+      }
       return false;
     });
-  }, [photos, links, currentReportContext, viewAll]);
+  }, [photos, links, currentReportContext, viewAll, recentLfi]);
 
   async function addPhotoToReport(photoId, reportId) {
     if (!reportId) return;
+    const report = (recentLfi || []).find(r => String(r.id) === String(reportId));
+    const reportLabel = (report && report.report_number) ? report.report_number : `RPT-${reportId}`;
     setLinkStatus(s => ({ ...s, [photoId]: "linking..." }));
     try {
       await createLink({
@@ -39,7 +46,7 @@ export default function PhotoIngest({ lang = "en", onUploaded, photos, recentLfi
         relationship_type: "associated_with",
         target_type: "field_report",
         target_id: String(reportId),
-        target_label: `RPT-${reportId}`,
+        target_label: reportLabel,
         notes: "Linked from Photos tab",
       });
       setLinkStatus(s => ({ ...s, [photoId]: "linked" }));
@@ -177,7 +184,7 @@ export default function PhotoIngest({ lang = "en", onUploaded, photos, recentLfi
                     >
                       <option value="">Add to report...</option>
                       {(recentLfi || []).slice(0, 8).map(r => (
-                        <option key={r.id} value={r.id}>RPT-{r.id} { (r.what_happened || r.who_involved || "").slice(0,28) }</option>
+                        <option key={r.id} value={r.id}>{r.report_number || `RPT-${r.id}`} { (r.what_happened || r.who_involved || "").slice(0,28) }</option>
                       ))}
                     </select>
                     {linkStatus[p.id] && <span style={{fontSize:10, marginLeft:4}}>{linkStatus[p.id]}</span>}

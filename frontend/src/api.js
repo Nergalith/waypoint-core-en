@@ -162,6 +162,10 @@ export async function exportLfi(ids, lang = "en") {
   return r.json();
 }
 
+export function downloadReportUrl(filename) {
+  return `${BASE}/api/reports/download/${encodeURIComponent(filename)}`;
+}
+
 export async function getStorageSize() {
   const r = await fetch(`${BASE}/api/storage/size`);
   if (!r.ok) throw new Error("Failed to get storage size");

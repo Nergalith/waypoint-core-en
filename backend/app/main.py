@@ -439,6 +439,17 @@ def delete_lfi(lfi_id: int):
     return {"deleted": lfi_id}
 
 
+@app.get("/api/reports/download/{filename}")
+def download_report(filename: str):
+    safe_name = Path(filename).name  # strip any path components
+    if not safe_name.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files can be downloaded.")
+    for p in REPORTS_DIR.rglob(safe_name):
+        if p.is_file():
+            return FileResponse(str(p), media_type="application/pdf", filename=safe_name)
+    raise HTTPException(status_code=404, detail="Report file not found.")
+
+
 @app.post("/api/lfi/export", status_code=201)
 def export_lfi(payload: LfiExportRequest):
     if not payload.ids:

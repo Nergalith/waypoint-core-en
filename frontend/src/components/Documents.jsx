@@ -36,7 +36,7 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
         const arr = m.get(String(lk.source_id)) || [];
         if (lk.target_type === "field_report") {
           const r = lfiById.get(String(lk.target_id));
-          arr.push(r ? `RPT-${lk.target_id}` : `RPT-${lk.target_id}`);
+          arr.push((r && r.report_number) ? r.report_number : `RPT-${lk.target_id}`);
         }
         m.set(String(lk.source_id), arr);
       }
@@ -44,7 +44,7 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
         const arr = m.get(String(lk.target_id)) || [];
         if (lk.source_type === "field_report") {
           const r = lfiById.get(String(lk.source_id));
-          arr.push(r ? `RPT-${lk.source_id}` : `RPT-${lk.source_id}`);
+          arr.push((r && r.report_number) ? r.report_number : `RPT-${lk.source_id}`);
         }
         m.set(String(lk.target_id), arr);
       }
