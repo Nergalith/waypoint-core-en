@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import json
 from contextlib import asynccontextmanager
@@ -111,6 +112,8 @@ class FieldObjectCreate(BaseModel):
     pin_category: str = "general"
     location_description: str = ""
 
+
+DEV_MODE = os.environ.get("WAYPOINT_DEV", "").lower() in ("1", "true", "yes")
 
 OBJECT_TYPES = {"person", "vehicle", "group", "location", "event"}
 OBJECT_STATUSES = {"active", "unknown", "no longer relevant"}
@@ -897,7 +900,9 @@ def delete_pin(pin_id: int):
 # ---------------- Utility: clear all (for testing only) ----------------
 @app.post("/api/dev/clear")
 def dev_clear_all():
-    """Danger: wipes all data. Only for local testing."""
+    """Danger: wipes all data. Only available when WAYPOINT_DEV=1."""
+    if not DEV_MODE:
+        raise HTTPException(status_code=403, detail="Only available in development mode (set WAYPOINT_DEV=1).")
     with get_connection() as conn:
         conn.execute("DELETE FROM map_pins")
         conn.execute("DELETE FROM photos")

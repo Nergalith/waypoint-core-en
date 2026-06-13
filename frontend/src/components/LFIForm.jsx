@@ -393,7 +393,19 @@ export default function LFIForm({
         <label>{tt("lfi.type_label")}</label>
         <select
           value={form.report_type}
-          onChange={(e) => update("report_type", e.target.value)}
+          onChange={(e) => {
+            const newType = e.target.value;
+            setForm((f) => ({
+              ...f,
+              report_type: newType,
+              who_involved: "",
+              what_happened: "",
+              where_happened: "",
+              when_happened: "",
+              notes: "",
+              related_to: "",
+            }));
+          }}
         >
           {REPORT_TYPES.map(([value, label]) => (
             <option key={value} value={value}>{label}</option>

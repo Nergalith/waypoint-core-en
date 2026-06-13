@@ -11,16 +11,21 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
     const list = documents || [];
     if (viewAll || currentReportContext == null) return list;
     const ctx = String(currentReportContext);
+    const ctxReport = (lfiList || []).find(r => String(r.id) === ctx);
+    const ctxNum = ctxReport?.report_number || null;
     return list.filter(d => {
       const hasLink = (links || []).some(lk =>
         (lk.source_type === "document" && String(lk.source_id) === String(d.id) && lk.target_type === "field_report" && String(lk.target_id) === ctx) ||
         (lk.target_type === "document" && String(lk.target_id) === String(d.id) && lk.source_type === "field_report" && String(lk.source_id) === ctx)
       );
       if (hasLink) return true;
-      if (d.related_to && (d.related_to.includes(ctx) || d.related_to.includes(`RPT-${ctx}`))) return true;
+      if (d.related_to) {
+        if (d.related_to.includes(ctx) || d.related_to.includes(`RPT-${ctx}`)) return true;
+        if (ctxNum && d.related_to.includes(ctxNum)) return true;
+      }
       return false;
     });
-  }, [documents, links, currentReportContext, viewAll]);
+  }, [documents, links, currentReportContext, viewAll, lfiList]);
   const [notes, setNotes] = useState("");
   const [relatedTo, setRelatedTo] = useState("");
   const [sourceLabel, setSourceLabel] = useState("");
