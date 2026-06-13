@@ -16,6 +16,7 @@ const BLANK_FORM = {
   longitude: "",
   pin_category: "general",
   pin_color: "#eab308",
+  report_number: "",
 };
 
 export default function LFIForm({
@@ -31,15 +32,18 @@ export default function LFIForm({
   setSelectedRel,
   editingId,
   setEditingId,
+  currentReportContext,
+  onStartNewReport,
+  onReportContextChange,
 }) {
   const tt = (key, vars = {}) => t(key, lang, vars);
 
   const REPORT_TYPES = useMemo(() => [
     ["Observation", tt("type.Observation")],
     ["Patrol", tt("type.Patrol")],
-    ["Witness", tt("type.Witness")],
-    ["Rumor", tt("type.Rumor")],
-    ["Other", tt("type.Other")],
+    ["Rumor/Witness", tt("type.Rumor")],
+    ["Checkpoint", tt("type.Checkpoint")],
+    ["Contact Report", tt("type.Contact")],
   ], [lang]);
 
   const RELIABILITIES = useMemo(() => [
@@ -50,6 +54,56 @@ export default function LFIForm({
     { code: "E", label: tt("rel.E_label"), color: "#ef4444", tip: tt("rel.E_tip") },
     { code: "F", label: tt("rel.F_label"), color: "#6b7280", tip: tt("rel.F_tip") },
   ], [lang]);
+
+  // Dynamic form fields per report type (Issue 2). Values still map to existing DB columns.
+  const FIELD_DEFS = useMemo(() => {
+    const common = {
+      when: { key: "when_happened", label: tt("lfi.when_label"), placeholder: tt("lfi.when_placeholder"), tip: "" },
+      notes: { key: "notes", label: tt("lfi.notes_label"), placeholder: tt("lfi.notes_placeholder"), tip: "", textarea: true },
+      reliability: true,
+    };
+    const defs = {
+      Observation: [
+        { key: "who_involved", label: "Who was involved", placeholder: "Persons, vehicle, group...", tip: "Simple description." },
+        { key: "what_happened", label: "What happened", placeholder: "What exactly happened or was seen", tip: "Facts only.", textarea: true },
+        { key: "where_happened", label: "Where", placeholder: "Location description or landmark", tip: "" },
+        common.when,
+        common.notes,
+      ],
+      Patrol: [
+        { key: "who_involved", label: "Size", placeholder: "How many / what size (e.g. 4 men, 2 vehicles)", tip: "SALUTE: Size" },
+        { key: "what_happened", label: "Activity", placeholder: "What they were doing (moving, setting up...)", tip: "SALUTE: Activity", textarea: true },
+        { key: "where_happened", label: "Location", placeholder: "Where observed", tip: "SALUTE: Location" },
+        { key: "related_to", label: "Unit / Uniform", placeholder: "Uniform, unit markings, ID if known", tip: "SALUTE: Unit/Uniform" },
+        common.when,
+        { key: "notes", label: "Equipment + Notes", placeholder: "Weapons, gear, vehicles, other details", tip: "SALUTE: Equipment + any notes", textarea: true },
+      ],
+      "Rumor/Witness": [
+        { key: "who_involved", label: "Who told you", placeholder: "Source of the information (witness name or description)", tip: "The 5 Ws" },
+        { key: "what_happened", label: "What did they say", placeholder: "Summary of what the person reported", tip: "", textarea: true },
+        { key: "where_happened", label: "Where did it happen", placeholder: "Place described by the source", tip: "" },
+        common.when,
+        { key: "notes", label: "Why do they think this", placeholder: "Reason or basis for the information", tip: "5th W: Why", textarea: true },
+      ],
+      Checkpoint: [
+        { key: "who_involved", label: "Vehicle description", placeholder: "Type, color, plate, markings", tip: "" },
+        { key: "what_happened", label: "Direction of travel, Number of occupants", placeholder: "Direction (northbound etc.) and number of people", tip: "", textarea: true },
+        { key: "where_happened", label: "Location", placeholder: "Where the checkpoint or sighting was", tip: "" },
+        { key: "related_to", label: "Weapons visible", placeholder: "Any weapons seen? Describe briefly", tip: "" },
+        common.when,
+        common.notes,
+      ],
+      "Contact Report": [
+        { key: "who_involved", label: "Who made contact", placeholder: "Your unit / patrol or the element that had contact", tip: "" },
+        { key: "what_happened", label: "What happened (Friendly/Hostile/Unknown)", placeholder: "Sequence of events and nature of contact", tip: "", textarea: true },
+        { key: "related_to", label: "Casualties", placeholder: "Casualties, damage, result", tip: "" },
+        { key: "where_happened", label: "Location", placeholder: "Where contact occurred", tip: "" },
+        common.when,
+        common.notes,
+      ],
+    };
+    return defs[form.report_type] || defs.Observation;
+  }, [form.report_type, lang]);
 
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
@@ -72,6 +126,7 @@ export default function LFIForm({
     setEditingId(null);
     setForm(BLANK_FORM);
     setSelectedRel("F");
+    if (onReportContextChange) onReportContextChange(null);
   }
 
   function handleEditDraft(l) {
@@ -88,9 +143,11 @@ export default function LFIForm({
       longitude: l.longitude != null ? String(l.longitude) : "",
       pin_category: l.pin_category || "general",
       pin_color: l.pin_color || "#eab308",
+      report_number: l.report_number || "",
     });
     setSelectedRel(l.source_reliability || "F");
     setEditingId(l.id);
+    if (onReportContextChange) onReportContextChange(l.id);
     setStatus(tt("lfi.editing_banner", { id: l.id }));
     document.getElementById("lfi-form-top")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -148,9 +205,11 @@ export default function LFIForm({
         longitude: report.longitude != null ? String(report.longitude) : "",
         pin_category: report.pin_category || "general",
         pin_color: report.pin_color || "#eab308",
+        report_number: report.report_number || "",
       });
       setSelectedRel(report.source_reliability || "F");
       setEditingId(report.id);
+      if (onReportContextChange) onReportContextChange(report.id);
       setStatus(tt("lfi.unlocked_to_edit", { id: report.id }));
       document.getElementById("lfi-form-top")?.scrollIntoView({ behavior: "smooth", block: "start" });
       if (onSaved) onSaved();
@@ -164,7 +223,19 @@ export default function LFIForm({
 
   async function handleDelete(id) {
     if (deletingId) return;
-    if (!window.confirm(tt("lfi.confirm_delete"))) return;
+    const report = (recentLfi || []).find(r => r.id === id) || {};
+    const rnum = report.report_number || `RPT-${id}`;
+    if (!window.confirm(`Are you sure you want to delete ${rnum}?`)) return;
+
+    // Safe delete per issue 6: extra warning if no PDF exported yet
+    const hasPdf = !!report.pdf_path;
+    const isFinal = report.status === "finalized";
+    if (!hasPdf && !isFinal) {
+      if (!window.confirm(`This report has not been exported to PDF yet. Delete anyway? Deletion cannot be undone. Linked photos/documents stay in storage.`)) return;
+    } else {
+      if (!window.confirm(`Delete ${rnum}? This cannot be undone. Linked photos and documents will remain in storage.`)) return;
+    }
+
     setDeletingId(id);
     try {
       await deleteLfi(id);
@@ -244,16 +315,18 @@ export default function LFIForm({
 
     try {
       if (editingId) {
-        await updateLfi(editingId, { ...form, ...coords });
+        const saved = await updateLfi(editingId, { ...form, ...coords });
         setStatus(tt("lfi.update_success"));
         setEditingId(null);
         setForm(BLANK_FORM);
         setSelectedRel("F");
+        if (onReportContextChange && saved?.id) onReportContextChange(saved.id);
       } else {
-        await createLfi({ ...form, ...coords });
+        const saved = await createLfi({ ...form, ...coords });
         setStatus(tt("lfi.success"));
         setForm((prev) => ({ ...BLANK_FORM, report_type: prev.report_type }));
         setSelectedRel("F");
+        if (onReportContextChange && saved?.id) onReportContextChange(saved.id);
       }
       if (onSaved) onSaved();
     } catch {
@@ -281,6 +354,25 @@ export default function LFIForm({
         {tt("lfi.intro")}
       </p>
 
+      <div style={{ marginBottom: 10 }}>
+        <button
+          type="button"
+          className="small-action"
+          onClick={() => {
+            if (onStartNewReport) onStartNewReport();
+            else {
+              setForm(BLANK_FORM);
+              setSelectedRel("F");
+              setEditingId(null);
+              if (onReportContextChange) onReportContextChange(null);
+            }
+          }}
+          style={{ fontSize: 12, background: "rgba(16,185,129,0.12)", borderColor: "#10b981" }}
+        >
+          + New Report
+        </button>
+      </div>
+
       {editingId && (
         <div style={{
           background: "rgba(234,179,8,0.12)", border: "1px solid rgba(234,179,8,0.4)",
@@ -305,31 +397,29 @@ export default function LFIForm({
           ))}
         </select>
 
-        <label>{tt("lfi.who_label")}</label>
-        <input
-          type="text"
-          placeholder={tt("lfi.who_placeholder")}
-          value={form.who_involved}
-          onChange={(e) => update("who_involved", e.target.value)}
-        />
-        <div className="tooltip">{tt("lfi.who_tip")}</div>
+        {/* Dynamic fields based on report type (plain language, per brief) */}
+        {FIELD_DEFS.map((f, idx) => (
+          <div key={idx}>
+            <label>{f.label}</label>
+            {f.textarea ? (
+              <textarea
+                placeholder={f.placeholder}
+                value={form[f.key] || ""}
+                onChange={(e) => update(f.key, e.target.value)}
+              />
+            ) : (
+              <input
+                type="text"
+                placeholder={f.placeholder}
+                value={form[f.key] || ""}
+                onChange={(e) => update(f.key, e.target.value)}
+              />
+            )}
+            {f.tip && <div className="tooltip">{f.tip}</div>}
+          </div>
+        ))}
 
-        <label>{tt("lfi.what_label")}</label>
-        <textarea
-          placeholder={tt("lfi.what_placeholder")}
-          value={form.what_happened}
-          onChange={(e) => update("what_happened", e.target.value)}
-        />
-        <div className="tooltip">{tt("lfi.what_tip")}</div>
-
-        <label>{tt("lfi.where_label")}</label>
-        <input
-          type="text"
-          placeholder={tt("lfi.where_placeholder")}
-          value={form.where_happened}
-          onChange={(e) => update("where_happened", e.target.value)}
-        />
-
+        {/* Always show lat/lon for map pin (if provided). Location text goes in Where field above. */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div>
             <label>{tt("lfi.lat_label")}</label>
@@ -353,30 +443,6 @@ export default function LFIForm({
           </div>
         </div>
         <div className="tooltip">{tt("lfi.geo_tip")}</div>
-
-        <label>{tt("lfi.when_label")}</label>
-        <input
-          type="text"
-          placeholder={tt("lfi.when_placeholder")}
-          value={form.when_happened}
-          onChange={(e) => update("when_happened", e.target.value)}
-        />
-
-        <label>{tt("lfi.notes_label")}</label>
-        <textarea
-          placeholder={tt("lfi.notes_placeholder")}
-          value={form.notes}
-          onChange={(e) => update("notes", e.target.value)}
-        />
-
-        <label>{tt("lfi.related_label")}</label>
-        <input
-          type="text"
-          placeholder={tt("lfi.related_placeholder")}
-          value={form.related_to}
-          onChange={(e) => update("related_to", e.target.value)}
-        />
-        <div className="tooltip">{tt("lfi.related_tip")}</div>
 
         <label>{tt("lfi.reliability_label")}</label>
         <div className="reliability-grid">
@@ -519,7 +585,7 @@ export default function LFIForm({
                   </span>
                 )}
                 <span style={{ flex: 1 }}>
-                  {translateReportType(l.report_type, tt)} - {l.what_happened?.slice(0, 70) || l.who_involved?.slice(0, 50) || tt("lfi.no_detail")}
+                  <strong>{l.report_number || `RPT-${l.id}`}</strong> - {translateReportType(l.report_type, tt)} - {l.what_happened?.slice(0, 70) || l.who_involved?.slice(0, 50) || tt("lfi.no_detail")}
                   {l.latitude && " GPS"}
                   {l.related_to && <span style={{color: 'var(--accent)'}}> | {tt("common.linked", {note: l.related_to.slice(0,30)})}</span>}
                 </span>
@@ -529,6 +595,11 @@ export default function LFIForm({
                   {tt("lfi.finalized_at", { date: l.finalized_at.replace("T", " ").replace("Z", "") })}
                 </div>
               )}
+              <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 1, marginLeft: 2, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {l.created_at && <span>C: {l.created_at.replace("T"," ").slice(0,16)}</span>}
+                {l.last_edited_at && <span>E: {l.last_edited_at.replace("T"," ").slice(0,16)}</span>}
+                {l.reopened_at && <span>R: {l.reopened_at.replace("T"," ").slice(0,16)}</span>}
+              </div>
               {!selectMode && (
                 <div style={{ marginTop: 5, display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {!isFinalized && (

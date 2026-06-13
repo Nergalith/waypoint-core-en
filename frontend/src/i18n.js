@@ -28,9 +28,13 @@ export const LANGUAGES = [
 const REPORT_TYPE_KEYS = {
   Observation: "type.Observation",
   Patrol: "type.Patrol",
-  Witness: "type.Witness",
+  "Rumor/Witness": "type.Rumor",
   Rumor: "type.Rumor",
-  Other: "type.Other",
+  Witness: "type.Rumor",
+  Checkpoint: "type.Checkpoint",
+  "Contact Report": "type.Contact",
+  Contact: "type.Contact",
+  Other: "type.Observation",
 };
 
 export function translateReportType(value, tt) {

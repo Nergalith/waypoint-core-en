@@ -1,14 +1,54 @@
 ﻿import React, { useEffect, useState } from "react";
-import { uploadPhotos, photoUrl, thumbUrl } from "../api";
+import { uploadPhotos, photoUrl, thumbUrl, createLink } from "../api";
 import { t } from "../i18n";
 
-export default function PhotoIngest({ lang = "en", onUploaded, photos, focusedId }) {
+export default function PhotoIngest({ lang = "en", onUploaded, photos, recentLfi = [], links = [], currentReportContext, focusedId }) {
   const tt = (key, vars = {}) => t(key, lang, vars);
 
   const [dragOver, setDragOver] = useState(false);
   const [status, setStatus] = useState("");
   const [uploading, setUploading] = useState(false);
   const [relatedToNote, setRelatedToNote] = useState("");
+  const [linkStatus, setLinkStatus] = useState({}); // per photo id status
+  const [viewAll, setViewAll] = useState(false);
+
+  // Filter to photos linked to the current report context (links preferred, related_to fallback). When null context or viewAll, show all.
+  const displayedPhotos = React.useMemo(() => {
+    const list = photos || [];
+    if (viewAll || currentReportContext == null) return list;
+    const ctx = String(currentReportContext);
+    return list.filter(p => {
+      const hasLink = (links || []).some(lk =>
+        (lk.source_type === "photo" && String(lk.source_id) === String(p.id) && lk.target_type === "field_report" && String(lk.target_id) === ctx) ||
+        (lk.target_type === "photo" && String(lk.target_id) === String(p.id) && lk.source_type === "field_report" && String(lk.source_id) === ctx)
+      );
+      if (hasLink) return true;
+      if (p.related_to && (p.related_to.includes(ctx) || p.related_to.includes(`RPT-${ctx}`))) return true;
+      return false;
+    });
+  }, [photos, links, currentReportContext, viewAll]);
+
+  async function addPhotoToReport(photoId, reportId) {
+    if (!reportId) return;
+    setLinkStatus(s => ({ ...s, [photoId]: "linking..." }));
+    try {
+      await createLink({
+        source_type: "photo",
+        source_id: String(photoId),
+        source_label: `Photo ${photoId}`,
+        relationship_type: "associated_with",
+        target_type: "field_report",
+        target_id: String(reportId),
+        target_label: `RPT-${reportId}`,
+        notes: "Linked from Photos tab",
+      });
+      setLinkStatus(s => ({ ...s, [photoId]: "linked" }));
+      setTimeout(() => setLinkStatus(s => { const n={...s}; delete n[photoId]; return n; }), 2500);
+      if (onUploaded) onUploaded();
+    } catch {
+      setLinkStatus(s => ({ ...s, [photoId]: "error" }));
+    }
+  }
 
   async function handleFiles(fileList) {
     if (!fileList || fileList.length === 0) return;
@@ -92,9 +132,19 @@ export default function PhotoIngest({ lang = "en", onUploaded, photos, focusedId
 
       {photos && photos.length > 0 && (
         <div>
-          <strong style={{ display: "block", margin: "12px 0 6px" }}>{tt("photo.ingested_title", {count: photos.length})}</strong>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "12px 0 6px" }}>
+            <strong>{tt("photo.ingested_title", {count: photos.length})}</strong>
+            <button
+              type="button"
+              className="small-action"
+              onClick={() => setViewAll(v => !v)}
+              style={{ fontSize: 11 }}
+            >
+              {viewAll ? "Show only for current report" : "View all photos"}
+            </button>
+          </div>
           <div className="photo-grid">
-            {photos.map((p, idx) => (
+            {displayedPhotos.map((p, idx) => (
               <div key={p.id || idx} id={`source-photo-${p.id}`} className="photo-card">
                 {p.thumb_path ? (
                   <img src={thumbUrl(p.thumb_path) || photoUrl(p.stored_path?.split(/[\\/]/).pop())} alt={p.original_filename} />
@@ -113,6 +163,25 @@ export default function PhotoIngest({ lang = "en", onUploaded, photos, focusedId
                   )}
                   <div style={{ fontSize: 10, color: "var(--muted)" }}>{p.camera_info || ""}</div>
                   {p.related_to && <div style={{fontSize: '10px', color: 'var(--accent)', marginTop: '2px'}}>{tt("common.linked", {note: p.related_to.slice(0,40)})}</div>}
+                  <div style={{marginTop: 4}}>
+                    <select
+                      style={{fontSize:11, maxWidth: "70%"}}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val) {
+                          addPhotoToReport(p.id, val);
+                          e.target.value = "";
+                        }
+                      }}
+                      defaultValue=""
+                    >
+                      <option value="">Add to report...</option>
+                      {(recentLfi || []).slice(0, 8).map(r => (
+                        <option key={r.id} value={r.id}>RPT-{r.id} { (r.what_happened || r.who_involved || "").slice(0,28) }</option>
+                      ))}
+                    </select>
+                    {linkStatus[p.id] && <span style={{fontSize:10, marginLeft:4}}>{linkStatus[p.id]}</span>}
+                  </div>
                 </div>
               </div>
             ))}

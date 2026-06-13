@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 param(
     [switch]$NoBrowser,
     [switch]$SkipInstall
@@ -71,7 +71,7 @@ if (-not $SkipInstall) {
 }
 
 Stop-PortOwner 8000
-Stop-PortOwner 5173
+Stop-PortOwner 5174
 
 Write-Host "[1/2] Backend   ->  http://127.0.0.1:8000" -ForegroundColor Green
 $beProc = Start-Process -FilePath $python `
@@ -79,7 +79,7 @@ $beProc = Start-Process -FilePath $python `
     -WorkingDirectory $backend `
     -PassThru
 
-Write-Host "[2/2] Frontend  ->  http://127.0.0.1:5173" -ForegroundColor Green
+Write-Host "[2/2] Frontend  ->  http://127.0.0.1:5174" -ForegroundColor Green
 $feProc = Start-Process -FilePath $npmCmd `
     -ArgumentList "run", "dev", "--", "--host", "127.0.0.1" `
     -WorkingDirectory $frontend `
@@ -96,15 +96,15 @@ Write-Host ""
 Start-Sleep -Seconds 4
 try {
     Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8000/api/health" -TimeoutSec 5 | Out-Null
-    Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:5173" -TimeoutSec 5 | Out-Null
+    Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:5174" -TimeoutSec 5 | Out-Null
 } catch {
     Write-Host "[WARN] One service did not answer yet. Wait a few seconds, then refresh the browser." -ForegroundColor Yellow
 }
 
 if (-not $NoBrowser) {
-    Start-Process "http://127.0.0.1:5173"
+    Start-Process "http://127.0.0.1:5174"
 } else {
-    Write-Host "  NoBrowser mode - open http://127.0.0.1:5173 manually"
+    Write-Host "  NoBrowser mode - open http://127.0.0.1:5174 manually"
 }
 
 try {

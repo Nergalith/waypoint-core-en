@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import LFIForm from "./components/LFIForm.jsx";
 import PhotoIngest from "./components/PhotoIngest.jsx";
 import MapView from "./components/MapView.jsx";
@@ -7,7 +7,7 @@ import Documents from "./components/Documents.jsx";
 import Connections from "./components/Connections.jsx";
 import FieldObjects from "./components/FieldObjects.jsx";
 import { getDocuments, getFieldObjects, getLfi, getLinks, getPhotos, getPins, getStorageSize, health } from "./api";
-import { DEFAULT_LANG, t, LANGUAGES } from "./i18n";
+import { DEFAULT_LANG, t } from "./i18n";
 
 const BLANK_LFI_FORM = {
   report_type: "Observation",
@@ -42,6 +42,8 @@ export default function App() {
   const [mapFocus, setMapFocus] = useState(null);
   const [sourceFocus, setSourceFocus] = useState(null);
   const [storageDisplay, setStorageDisplay] = useState(null);
+  const [currentReportContext, setCurrentReportContext] = useState(null); // null = new/clean workspace for photos/docs
+  const [lastRefresh, setLastRefresh] = useState(null);
   const tt = (key, vars = {}) => t(key, lang, vars);
 
   const loadAll = useCallback(async () => {
@@ -78,6 +80,30 @@ export default function App() {
 
   async function refreshAll() {
     await loadAll();
+    const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setLastRefresh(t);
+  }
+
+  function startNewReport() {
+    // Per issue 1: reset draft, pin to general + yellow (unknown), clear editing, clean workspace (photos/docs), keep recent list
+    setLfiDraft({
+      report_type: "Observation",
+      who_involved: "",
+      what_happened: "",
+      where_happened: "",
+      when_happened: "",
+      notes: "",
+      related_to: "",
+      source_reliability: "F",
+      latitude: "",
+      longitude: "",
+      pin_category: "general",
+      pin_color: "#eab308",
+    });
+    setLfiDraftRel("F");
+    setLfiEditingId(null);
+    setCurrentReportContext(null);
+    setActive("lfi");
   }
 
   function toggleTheme() {
@@ -110,15 +136,6 @@ export default function App() {
           {sysStatus}<br />
           <span style={{ opacity: 0.7 }}>{tt("app.flow")}</span>
           <div className="header-controls">
-            <label style={{ marginRight: '2px', opacity: 0.8 }}>{tt("lang.label")}:</label>
-            <select
-              value={lang}
-              onChange={(e) => setLang(e.target.value)}
-            >
-              {LANGUAGES.map(l => (
-                <option key={l.code} value={l.code}>{l.label}</option>
-              ))}
-            </select>
             <button type="button" className="theme-toggle" onClick={toggleTheme}>
               {theme === "dark" ? tt("theme.light") : tt("theme.dark")}
             </button>
@@ -148,7 +165,7 @@ export default function App() {
         <button className={active === "chronologie" ? "active" : ""} onClick={() => setActive("chronologie")}>
           {tt("nav.chronologie")}
         </button>
-        <button onClick={refreshAll} className="refresh-nav">
+        <button onClick={refreshAll} className="refresh-nav" title={tt("refresh.tooltip") || "Reloads all data from the database."}>
           {tt("nav.refresh")}
         </button>
       </div>
@@ -176,6 +193,9 @@ export default function App() {
             setSelectedRel={setLfiDraftRel}
             editingId={lfiEditingId}
             setEditingId={setLfiEditingId}
+            currentReportContext={currentReportContext}
+            onStartNewReport={startNewReport}
+            onReportContextChange={setCurrentReportContext}
           />
         )}
 
@@ -184,6 +204,9 @@ export default function App() {
             lang={lang}
             onUploaded={refreshAll}
             photos={photoList}
+            recentLfi={lfiList}
+            links={linkList}
+            currentReportContext={currentReportContext}
             focusedId={sourceFocus?.source === "photo" ? sourceFocus : null}
           />
         )}
@@ -210,6 +233,9 @@ export default function App() {
           <Documents
             lang={lang}
             documents={documentList}
+            links={linkList}
+            lfiList={lfiList}
+            currentReportContext={currentReportContext}
             onUploaded={refreshAll}
             onPinCreated={refreshAll}
             focusedId={sourceFocus?.source === "document" ? sourceFocus : null}
@@ -276,7 +302,12 @@ export default function App() {
         )}
 
         <div style={{ textAlign: "center", marginTop: 20 }}>
-          <button onClick={refreshAll} className="small-action">{tt("status.refresh")}</button>
+          <button onClick={refreshAll} className="small-action" title={tt("refresh.tooltip") || "Reloads all data from the database."}>{tt("status.refresh")}</button>
+          {lastRefresh && (
+            <span style={{ marginLeft: 8, fontSize: 12, color: "var(--muted)" }}>
+              Refreshed at {lastRefresh}
+            </span>
+          )}
         </div>
       </div>
 

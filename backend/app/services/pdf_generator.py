@@ -71,6 +71,10 @@ _LABELS: dict[str, dict[str, str]] = {
         "coords": "GPS coordinates",
         "linked_objects": "Linked objects",
         "linked_photos": "Linked photos",
+        "report_number":  "Report number",
+        "created":        "Created",
+        "last_edited":    "Last edited",
+        "reopened":       "Reopened",
     },
 }
 
@@ -129,9 +133,10 @@ def _filename_date(date_str: str) -> str:
     return f"{dt.day:02d}{MONTH_ABBREV[dt.month - 1]}{str(dt.year)[2:]}"
 
 
-def _single_filename(report_id: int, report_type: str, date_str: str) -> str:
+def _single_filename(report_id: int, report_number: str | None, report_type: str, date_str: str) -> str:
     safe_type = report_type.replace(" ", "")[:20]
-    return f"RPT-{report_id:03d}_{safe_type}_{_filename_date(date_str)}.pdf"
+    base = report_number or f"RPT-{report_id:03d}"
+    return f"{base}_{safe_type}_{_filename_date(date_str)}.pdf"
 
 
 def _bundle_filename(count: int) -> str:
@@ -270,17 +275,28 @@ def _report_story(
     heading = styles["h2"] if as_section else styles["h1"]
 
     rid     = report.get("id", "?")
+    rnum    = report.get("report_number") or f"RPT-{int(rid):03d}" if str(rid).isdigit() else f"RPT-{rid}"
     rtype   = report.get("report_type", "")
     created = report.get("created_at", "")
     date_display = created.replace("T", " ").replace("Z", "") if created else ""
 
-    story.append(Paragraph(f"RPT-{rid:03d} - {rtype}", heading))
+    story.append(Paragraph(f"{rnum} - {rtype}", heading))
     if date_display:
         story.append(Paragraph(date_display, styles["muted"]))
 
+    # Four timestamps (audit trail)
+    c_ts = (report.get("created_at") or "").replace("T", " ").replace("Z", "")
+    if c_ts:
+        story.append(Paragraph(f"{lbl.get('created', 'Created')}: {c_ts}", styles["small"]))
+    le = (report.get("last_edited_at") or "").replace("T", " ").replace("Z", "")
+    if le:
+        story.append(Paragraph(f"{lbl.get('last_edited', 'Last edited')}: {le}", styles["small"]))
     if report.get("status") == "finalized":
         fin = (report.get("finalized_at") or "").replace("T", " ").replace("Z", "")
         story.append(Paragraph(f"{lbl['finalized']} - {fin}", styles["locked"]))
+    ro = (report.get("reopened_at") or "").replace("T", " ").replace("Z", "")
+    if ro:
+        story.append(Paragraph(f"{lbl.get('reopened', 'Reopened')}: {ro}", styles["small"]))
 
     story.append(Spacer(1, 4 * mm))
 
@@ -363,7 +379,8 @@ def generate_single_pdf(report: dict[str, Any], photos: list, links: list, lang:
     created = report.get("created_at", datetime.utcnow().isoformat())
     dt      = _parse_dt(created)
     folder  = ensure_reports_dir(dt.year, dt.month)
-    path    = folder / _single_filename(report.get("id", 0), report.get("report_type", "Report"), created)
+    rnum    = report.get("report_number")
+    path    = folder / _single_filename(report.get("id", 0), rnum, report.get("report_type", "Report"), created)
 
     lbl     = _lbl(lang)
     rel_lbl = _rel_labels(lang)

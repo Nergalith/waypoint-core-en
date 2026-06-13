@@ -1,4 +1,4 @@
-﻿WAYPOINT CORE EN - START HERE
+WAYPOINT CORE EN - START HERE
 
 Purpose
 - Clean English test build for offline Windows laptop testing.
@@ -10,11 +10,11 @@ Purpose
 
 2. Local addresses
    - Backend:  http://127.0.0.1:8000
-   - Frontend: http://127.0.0.1:5173
+   - Frontend: http://127.0.0.1:5174
 
 3. Stop Waypoint
    Double-click "Close Waypoint Core.vbs".
-   This stops recorded Waypoint processes and clears ports 8000/5173.
+   This stops recorded Waypoint processes and clears ports 8000/5174.
 
 4. Quick test workflow
    - Field Reports: create a report. If you enter a position, enter BOTH latitude and longitude.

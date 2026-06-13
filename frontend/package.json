@@ -4,9 +4,9 @@
   "version": "0.1.0-mvp",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --configLoader native",
+    "dev": "vite --host 127.0.0.1 --port 5174 --configLoader native",
     "build": "vite build --configLoader native",
-    "preview": "vite preview --host 127.0.0.1 --port 5173 --configLoader native"
+    "preview": "vite preview --host 127.0.0.1 --port 5174 --configLoader native"
   },
   "dependencies": {
     "react": "^18.3.1",

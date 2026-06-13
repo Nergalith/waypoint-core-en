@@ -72,11 +72,11 @@ export default function Chronologie({ lang = "en", lfiList, photoList, documentL
       });
     });
 
-    // Sort by event time (when or fallback created) desc. String compare keeps simple for low-resource.
+    // Sort by event time (when_happened) ascending: oldest to newest per spec. Fallback to created_at.
     evs.sort((a, b) => {
       const ta = (a.when || a.time || a.created_at || "");
       const tb = (b.when || b.time || b.created_at || "");
-      return tb.localeCompare(ta);
+      return ta.localeCompare(tb);
     });
 
     return evs;

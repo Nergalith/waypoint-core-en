@@ -4,7 +4,7 @@ import { t } from "../i18n";
 import { PIN_CATEGORIES, STATUS_COLORS } from "../pinConstants";
 
 const OBJECT_TYPES = ["person", "vehicle", "group", "location", "event"];
-const STATUSES = ["active", "unknown", "archived"];
+const STATUSES = ["active", "unknown", "no longer relevant"];
 
 export default function FieldObjects({
   lang = "en",
@@ -29,6 +29,7 @@ export default function FieldObjects({
     status: "unknown",
     pin_category: "general",
     pin_color: "#eab308",
+    location_description: "",
   });
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState(null);
@@ -88,6 +89,7 @@ export default function FieldObjects({
         status: form.status,
         pin_category: form.pin_category || "general",
         pin_color: form.pin_color || "#eab308",
+        location_description: form.location_description || "",
         ...coords,
       });
       setStatus(tt("objects.created"));
@@ -98,6 +100,7 @@ export default function FieldObjects({
         notes: "",
         latitude: "",
         longitude: "",
+        location_description: "",
         status: "unknown",
         pin_category: current.pin_category || "general",
         pin_color: current.pin_color || "#eab308",
@@ -135,6 +138,11 @@ export default function FieldObjects({
         <div className="object-form-wide">
           <label>{tt("objects.description")}</label>
           <input value={form.description} onChange={(e) => update("description", e.target.value)} placeholder={tt("objects.description_placeholder")} />
+        </div>
+        <div className="object-form-wide">
+          <label>{tt("objects.location_desc") || "Location description"}</label>
+          <input value={form.location_description || ""} onChange={(e) => update("location_description", e.target.value)} placeholder={tt("objects.location_desc_placeholder") || "e.g. near the market, north checkpoint"} />
+          <div className="tooltip" style={{fontSize:11}}>If lat/long given, map pin is created. Text description is stored but produces no pin.</div>
         </div>
         <div className="object-form-wide">
           <label>{tt("objects.notes")}</label>
@@ -188,7 +196,8 @@ export default function FieldObjects({
               <span className="object-pill">{tt(`object.${item.object_type}`)}</span>
               <strong>{item.name}</strong>
               <span>{tt(`objects.status.${item.status || "unknown"}`)}</span>
-              {item.latitude != null && item.longitude != null && <span>{tt("objects.has_position")}</span>}
+              {(item.latitude != null && item.longitude != null) && <span>{tt("objects.has_position")}</span>}
+              {item.location_description && <span style={{fontSize:10,opacity:0.8}}>📍 {item.location_description.slice(0,22)}</span>}
             </button>
           ))}
         </div>
@@ -201,6 +210,7 @@ export default function FieldObjects({
               <span className="object-pill">{tt(`object.${selected.object_type}`)}</span>
               <div className="detail-line">{tt(`objects.status.${selected.status || "unknown"}`)}</div>
               {selected.description && <div className="detail-line"><strong>{tt("objects.description")}:</strong> {selected.description}</div>}
+              {selected.location_description && <div className="detail-line"><strong>{tt("objects.location_desc") || "Location"}:</strong> {selected.location_description}</div>}
               {selected.notes && <div className="detail-note">{selected.notes}</div>}
               {selected.latitude != null && selected.longitude != null && (
                 <div className="detail-line">

@@ -1,4 +1,4 @@
-﻿# Waypoint Core EN
+# Waypoint Core EN
 
 Clean English test build for local/offline field workflow testing on Windows laptops, including older ToughBook-class hardware.
 
@@ -39,7 +39,7 @@ Open Waypoint Core.vbs
 Default local addresses:
 
 - Backend: `http://127.0.0.1:8000`
-- Frontend: `http://127.0.0.1:5173`
+- Frontend: `http://127.0.0.1:5174`
 
 To stop Waypoint, double-click:
 

@@ -173,6 +173,12 @@ export async function health() {
   return r.json();
 }
 
+export async function clearAllData() {
+  const r = await fetch(`${BASE}/api/dev/clear`, { method: "POST" });
+  if (!r.ok) throw new Error("Clear failed");
+  return r.json();
+}
+
 // For photo thumbs / full: use `${BASE}/photos/${filename}` or thumbs if present
 export function photoUrl(filename) {
   return `${BASE}/photos/${encodeURIComponent(filename)}`;

@@ -2,14 +2,55 @@
 import { createDocumentPin, uploadDocuments } from "../api";
 import { t } from "../i18n";
 
-export default function Documents({ lang = "en", documents = [], onUploaded, onPinCreated, focusedId }) {
+export default function Documents({ lang = "en", documents = [], links = [], lfiList = [], currentReportContext, onUploaded, onPinCreated, focusedId }) {
   const tt = (key, vars = {}) => t(key, lang, vars);
+  const [viewAll, setViewAll] = useState(false);
+
+  // Filter documents linked to currentReportContext via links (or related_to)
+  const displayedDocs = React.useMemo(() => {
+    const list = documents || [];
+    if (viewAll || currentReportContext == null) return list;
+    const ctx = String(currentReportContext);
+    return list.filter(d => {
+      const hasLink = (links || []).some(lk =>
+        (lk.source_type === "document" && String(lk.source_id) === String(d.id) && lk.target_type === "field_report" && String(lk.target_id) === ctx) ||
+        (lk.target_type === "document" && String(lk.target_id) === String(d.id) && lk.source_type === "field_report" && String(lk.source_id) === ctx)
+      );
+      if (hasLink) return true;
+      if (d.related_to && (d.related_to.includes(ctx) || d.related_to.includes(`RPT-${ctx}`))) return true;
+      return false;
+    });
+  }, [documents, links, currentReportContext, viewAll]);
   const [notes, setNotes] = useState("");
   const [relatedTo, setRelatedTo] = useState("");
   const [sourceLabel, setSourceLabel] = useState("");
   const [status, setStatus] = useState("");
   const [uploading, setUploading] = useState(false);
   const [fullDoc, setFullDoc] = useState(null);
+
+  const linksByDoc = useMemo(() => {
+    const m = new Map();
+    const lfiById = new Map((lfiList || []).map(l => [String(l.id), l]));
+    (links || []).forEach(lk => {
+      if (lk.source_type === "document") {
+        const arr = m.get(String(lk.source_id)) || [];
+        if (lk.target_type === "field_report") {
+          const r = lfiById.get(String(lk.target_id));
+          arr.push(r ? `RPT-${lk.target_id}` : `RPT-${lk.target_id}`);
+        }
+        m.set(String(lk.source_id), arr);
+      }
+      if (lk.target_type === "document") {
+        const arr = m.get(String(lk.target_id)) || [];
+        if (lk.source_type === "field_report") {
+          const r = lfiById.get(String(lk.source_id));
+          arr.push(r ? `RPT-${lk.source_id}` : `RPT-${lk.source_id}`);
+        }
+        m.set(String(lk.target_id), arr);
+      }
+    });
+    return m;
+  }, [links, lfiList]);
 
   async function handleFiles(fileList) {
     if (!fileList || fileList.length === 0) return;
@@ -97,13 +138,20 @@ export default function Documents({ lang = "en", documents = [], onUploaded, onP
       {uploading && <div className="status">{tt("docs.uploading")}</div>}
       {status && <div className="status">{status}</div>}
 
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "8px 0" }}>
+        <strong>Documents</strong>
+        <button type="button" className="small-action" onClick={() => setViewAll(v => !v)} style={{ fontSize: 11 }}>
+          {viewAll ? "Show only for current report" : "View all documents"}
+        </button>
+      </div>
       <div className="doc-list">
-        {documents.length === 0 && <div className="empty-state">{tt("docs.empty")}</div>}
-        {documents.map((doc) => (
+        {displayedDocs.length === 0 && <div className="empty-state">{tt("docs.empty")}</div>}
+        {displayedDocs.map((doc) => (
           <DocumentCard
             key={doc.id}
             doc={doc}
             tt={tt}
+            linkedReports={(linksByDoc.get(String(doc.id)) || [])}
             onView={() => setFullDoc(doc)}
             onCreatePin={(coord) => createPin(doc, coord)}
           />
@@ -125,7 +173,7 @@ export default function Documents({ lang = "en", documents = [], onUploaded, onP
   );
 }
 
-function DocumentCard({ doc, tt, onView, onCreatePin }) {
+function DocumentCard({ doc, tt, linkedReports = [], onView, onCreatePin }) {
   const clues = doc.clues || {};
   const coordinates = clues.coordinates || [];
   const keywords = clues.keywords || [];
@@ -150,6 +198,9 @@ function DocumentCard({ doc, tt, onView, onCreatePin }) {
       {doc.extraction_status === 'error' && doc.extraction_detail && <div className="tooltip">{doc.extraction_detail}</div>}
       {doc.notes && <div className="doc-note">{tt("docs.notes")}: {doc.notes}</div>}
       {doc.related_to && <div className="doc-note">{tt("common.linked", {note: doc.related_to})}</div>}
+      <div className="doc-note" style={{fontSize:11, color: linkedReports.length ? "var(--accent)" : "var(--muted)"}}>
+        {linkedReports.length > 0 ? `Linked to report(s): ${linkedReports.join(", ")}` : "Not linked to any report."}
+      </div>
 
       <div className="doc-preview">{doc.text_preview || tt("docs.no_text")}</div>
 

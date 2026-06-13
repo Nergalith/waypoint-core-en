@@ -1,4 +1,4 @@
-﻿WAYPOINT CORE EN - TOUGHBOOK TRANSFER CHECKLIST
+WAYPOINT CORE EN - TOUGHBOOK TRANSFER CHECKLIST
 
 Goal
 Copy this folder to a thumb drive and run it on an older Windows laptop for offline testing.
@@ -23,7 +23,7 @@ Copying
 First run on ToughBook
 1. Double-click Open Waypoint Core.vbs.
 2. Let setup install backend/frontend dependencies if needed.
-3. Open http://127.0.0.1:5173 if the browser does not open automatically.
+3. Open http://127.0.0.1:5174 if the browser does not open automatically.
 4. Create one report, one manual map pin, one field object, and one connection.
 5. Double-click Close Waypoint Core.vbs when finished.
 

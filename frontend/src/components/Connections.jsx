@@ -1,5 +1,5 @@
 ﻿import React, { useMemo, useState } from "react";
-import { createLink } from "../api";
+import { createLink, clearAllData } from "../api";
 import { t } from "../i18n";
 
 const OBJECT_TYPES = [
@@ -111,6 +111,29 @@ export default function Connections({
     <div className="card">
       <h2>{tt("links.title")}</h2>
       <p style={{ color: "var(--soft)" }}>{tt("links.intro")}</p>
+      <div style={{ fontSize: 12, background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.25)", padding: "6px 10px", borderRadius: 3, marginBottom: 8 }}>
+        This shows links between your reports and field objects. Links are created when you reference the same person, vehicle, or location in multiple reports.
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <button
+          type="button"
+          className="small-action"
+          onClick={async () => {
+            if (!window.confirm("Clear all demo and session data? This deletes reports, objects, photos, documents and links from the database (files on disk stay).")) return;
+            try {
+              await clearAllData();
+              if (onCreated) await onCreated();
+              setStatus("Data cleared. Start fresh.");
+              setTimeout(() => setStatus(""), 4000);
+            } catch {
+              setStatus("Clear failed.");
+            }
+          }}
+          style={{ fontSize: 11, background: "rgba(239,68,68,0.1)", borderColor: "rgba(239,68,68,0.4)" }}
+        >
+          Clear demo data
+        </button>
+      </div>
 
       <form onSubmit={submit} className="link-form">
         <ObjectPicker

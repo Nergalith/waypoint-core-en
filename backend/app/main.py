@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import shutil
 import json
@@ -109,10 +109,11 @@ class FieldObjectCreate(BaseModel):
     status: str = "unknown"
     pin_color: str = "#eab308"
     pin_category: str = "general"
+    location_description: str = ""
 
 
 OBJECT_TYPES = {"person", "vehicle", "group", "location", "event"}
-OBJECT_STATUSES = {"active", "unknown", "archived"}
+OBJECT_STATUSES = {"active", "unknown", "no longer relevant"}
 
 
 def validate_coordinate_pair(latitude: Optional[float], longitude: Optional[float]) -> tuple[Optional[float], Optional[float]]:
@@ -127,6 +128,27 @@ def validate_coordinate_pair(latitude: Optional[float], longitude: Optional[floa
     return round(float(latitude), 6), round(float(longitude), 6)
 
 
+def _get_next_report_number() -> str:
+    """Compute RPT-YYYYMMDD-NNN. NNN resets daily, increments from existing."""
+    today = datetime.utcnow().strftime("%Y%m%d")
+    prefix = f"RPT-{today}-"
+    try:
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT report_number FROM lfi_reports WHERE report_number LIKE ? ORDER BY report_number DESC LIMIT 1",
+                (prefix + "%",)
+            ).fetchone()
+            if row and row[0]:
+                try:
+                    n = int(str(row[0]).split('-')[-1])
+                    return f"{prefix}{n + 1:03d}"
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return f"{prefix}001"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -139,8 +161,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://localhost:5173",
+        "http://127.0.0.1:5174",
+        "http://localhost:5174",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -202,16 +224,19 @@ def create_lfi(payload: LfiCreate):
     latitude, longitude = validate_coordinate_pair(payload.latitude, payload.longitude)
     pin_cat = (payload.pin_category or "general").strip() or "general"
     pin_col = payload.pin_color or "#eab308"
+    report_num = _get_next_report_number()
     with get_connection() as conn:
         cur = conn.execute(
             """
             INSERT INTO lfi_reports
-            (report_type, who_involved, what_happened, where_happened, when_happened,
-             notes, source_reliability, latitude, longitude, related_to, pin_category, pin_color, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (report_type, report_number, who_involved, what_happened, where_happened, when_happened,
+             notes, source_reliability, latitude, longitude, related_to, pin_category, pin_color,
+             created_at, last_edited_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 payload.report_type,
+                report_num,
                 payload.who_involved.strip(),
                 payload.what_happened.strip(),
                 payload.where_happened.strip(),
@@ -223,6 +248,7 @@ def create_lfi(payload: LfiCreate):
                 payload.related_to.strip(),
                 pin_cat,
                 pin_col,
+                now,
                 now,
             ),
         )
@@ -236,7 +262,7 @@ def create_lfi(payload: LfiCreate):
                     "DELETE FROM map_pins WHERE source = 'field_report' AND source_id = ?",
                     (str(lfi_id),),
                 )
-                label = f"RPT-{lfi_id} {payload.report_type}"[:80]
+                label = f"{report_num} {payload.report_type}"[:80]
                 conn.execute(
                     """
                     INSERT INTO map_pins (latitude, longitude, label, source, source_id, color, category, created_at)
@@ -325,6 +351,7 @@ def reopen_lfi(lfi_id: int):
 
 @app.patch("/api/lfi/{lfi_id}")
 def update_lfi(lfi_id: int, payload: LfiUpdate):
+    now = utc_now_iso()
     with get_connection() as conn:
         row = conn.execute("SELECT id FROM lfi_reports WHERE id = ?", (lfi_id,)).fetchone()
         if row is None:
@@ -338,7 +365,7 @@ def update_lfi(lfi_id: int, payload: LfiUpdate):
                 report_type = ?, who_involved = ?, what_happened = ?,
                 where_happened = ?, when_happened = ?, notes = ?,
                 source_reliability = ?, latitude = ?, longitude = ?, related_to = ?,
-                pin_category = ?, pin_color = ?
+                pin_category = ?, pin_color = ?, last_edited_at = ?
             WHERE id = ?
             """,
             (
@@ -354,6 +381,7 @@ def update_lfi(lfi_id: int, payload: LfiUpdate):
                 payload.related_to.strip(),
                 pin_cat,
                 pin_col,
+                now,
                 lfi_id,
             ),
         )
@@ -362,13 +390,13 @@ def update_lfi(lfi_id: int, payload: LfiUpdate):
     # Upsert auto pin on edit (supports coord/cat/color changes)
     if latitude is not None and longitude is not None:
         try:
-            now = utc_now_iso()
             with get_connection() as conn:
                 conn.execute(
                     "DELETE FROM map_pins WHERE source = 'field_report' AND source_id = ?",
                     (str(lfi_id),),
                 )
-                label = f"RPT-{lfi_id} {payload.report_type}"[:80]
+                rnum = (updated or {}).get("report_number") or f"RPT-{lfi_id}"
+                label = f"{rnum} {payload.report_type}"[:80]
                 conn.execute(
                     """
                     INSERT INTO map_pins (latitude, longitude, label, source, source_id, color, category, created_at)
@@ -682,8 +710,8 @@ def create_field_object(payload: FieldObjectCreate):
         cur = conn.execute(
             """
             INSERT INTO field_objects
-            (object_type, name, description, notes, latitude, longitude, status, pin_color, pin_category, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (object_type, name, description, notes, latitude, longitude, status, pin_color, pin_category, location_description, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 object_type,
@@ -695,6 +723,7 @@ def create_field_object(payload: FieldObjectCreate):
                 status,
                 pin_col,
                 pin_cat,
+                (payload.location_description or "").strip(),
                 now,
                 now,
             ),

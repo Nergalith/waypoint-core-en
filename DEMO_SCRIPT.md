@@ -1,10 +1,10 @@
-﻿# Waypoint Core EN Demo Script
+# Waypoint Core EN Demo Script
 
 Use this script to prove the clean English test workflow without CAR demo data.
 
 1. Start Waypoint
    - Double-click Open Waypoint Core.vbs.
-   - Confirm the browser opens at http://127.0.0.1:5173.
+   - Confirm the browser opens at http://127.0.0.1:5174.
 
 2. Confirm clean state
    - Reports, photos, documents, field objects, connections, and timeline should be empty.
