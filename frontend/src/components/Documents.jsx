@@ -1,15 +1,16 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
-import { createDocumentPin, uploadDocuments } from "../api";
+import { createDocumentPin, deleteDocument, uploadDocuments } from "../api";
 import { t } from "../i18n";
 
 export default function Documents({ lang = "en", documents = [], links = [], lfiList = [], currentReportContext, onUploaded, onPinCreated, focusedId }) {
   const tt = (key, vars = {}) => t(key, lang, vars);
   const [viewAll, setViewAll] = useState(false);
 
-  // Filter documents linked to currentReportContext via links (or related_to)
+  // Filter documents linked to currentReportContext. viewAll overrides; null context with no viewAll shows empty.
   const displayedDocs = React.useMemo(() => {
     const list = documents || [];
-    if (viewAll || currentReportContext == null) return list;
+    if (viewAll) return list;
+    if (currentReportContext == null) return [];
     const ctx = String(currentReportContext);
     const ctxReport = (lfiList || []).find(r => String(r.id) === ctx);
     const ctxNum = ctxReport?.report_number || null;
@@ -32,6 +33,22 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
   const [status, setStatus] = useState("");
   const [uploading, setUploading] = useState(false);
   const [fullDoc, setFullDoc] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+
+  async function handleDelete(docId) {
+    if (!window.confirm(tt("docs.delete_confirm"))) return;
+    setDeletingId(docId);
+    try {
+      await deleteDocument(docId);
+      setStatus(tt("docs.delete_success"));
+      if (onUploaded) await onUploaded();
+    } catch {
+      setStatus(tt("docs.delete_error"));
+    } finally {
+      setDeletingId(null);
+      setTimeout(() => setStatus(""), 3800);
+    }
+  }
 
   const linksByDoc = useMemo(() => {
     const m = new Map();
@@ -144,9 +161,9 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
       {status && <div className="status">{status}</div>}
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "8px 0" }}>
-        <strong>Documents</strong>
+        <strong>{tt("docs.title")}</strong>
         <button type="button" className="small-action" onClick={() => setViewAll(v => !v)} style={{ fontSize: 11 }}>
-          {viewAll ? "Show only for current report" : "View all documents"}
+          {viewAll ? tt("docs.filter_only_current") : tt("docs.view_all")}
         </button>
       </div>
       <div className="doc-list">
@@ -159,6 +176,8 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
             linkedReports={(linksByDoc.get(String(doc.id)) || [])}
             onView={() => setFullDoc(doc)}
             onCreatePin={(coord) => createPin(doc, coord)}
+            onDelete={() => handleDelete(doc.id)}
+            isDeleting={deletingId === doc.id}
           />
         ))}
       </div>
@@ -178,7 +197,7 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
   );
 }
 
-function DocumentCard({ doc, tt, linkedReports = [], onView, onCreatePin }) {
+function DocumentCard({ doc, tt, linkedReports = [], onView, onCreatePin, onDelete, isDeleting }) {
   const clues = doc.clues || {};
   const coordinates = clues.coordinates || [];
   const keywords = clues.keywords || [];
@@ -204,7 +223,7 @@ function DocumentCard({ doc, tt, linkedReports = [], onView, onCreatePin }) {
       {doc.notes && <div className="doc-note">{tt("docs.notes")}: {doc.notes}</div>}
       {doc.related_to && <div className="doc-note">{tt("common.linked", {note: doc.related_to})}</div>}
       <div className="doc-note" style={{fontSize:11, color: linkedReports.length ? "var(--accent)" : "var(--muted)"}}>
-        {linkedReports.length > 0 ? `Linked to report(s): ${linkedReports.join(", ")}` : "Not linked to any report."}
+        {linkedReports.length > 0 ? tt("docs.linked_reports", { reports: linkedReports.join(", ") }) : tt("docs.not_linked_report")}
       </div>
 
       <div className="doc-preview">{doc.text_preview || tt("docs.no_text")}</div>
@@ -227,7 +246,17 @@ function DocumentCard({ doc, tt, linkedReports = [], onView, onCreatePin }) {
         </div>
       )}
 
-      <button className="small-action" title={tt("docs.view_full")} onClick={onView}>{tt("docs.view_full")}</button>
+      <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+        <button className="small-action" title={tt("docs.view_full")} onClick={onView}>{tt("docs.view_full")}</button>
+        <button
+          className="small-action"
+          onClick={onDelete}
+          disabled={isDeleting}
+          style={{ fontSize: 11, background: "rgba(239,68,68,0.10)", borderColor: "rgba(239,68,68,0.5)", color: "#ef4444" }}
+        >
+          {isDeleting ? tt("common.loading") : tt("docs.delete_btn")}
+        </button>
+      </div>
     </div>
   );
 }

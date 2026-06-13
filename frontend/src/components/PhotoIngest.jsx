@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useState } from "react";
-import { uploadPhotos, photoUrl, thumbUrl, createLink } from "../api";
+import { deletePhoto, uploadPhotos, photoUrl, thumbUrl, createLink } from "../api";
 import { t } from "../i18n";
 
 export default function PhotoIngest({ lang = "en", onUploaded, photos, recentLfi = [], links = [], currentReportContext, focusedId }) {
@@ -9,13 +9,30 @@ export default function PhotoIngest({ lang = "en", onUploaded, photos, recentLfi
   const [status, setStatus] = useState("");
   const [uploading, setUploading] = useState(false);
   const [relatedToNote, setRelatedToNote] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
+
+  async function handleDelete(photoId) {
+    if (!window.confirm(tt("photo.delete_confirm"))) return;
+    setDeletingId(photoId);
+    try {
+      await deletePhoto(photoId);
+      setStatus(tt("photo.delete_success"));
+      if (onUploaded) onUploaded();
+    } catch {
+      setStatus(tt("photo.delete_error"));
+    } finally {
+      setDeletingId(null);
+      setTimeout(() => setStatus(""), 3800);
+    }
+  }
   const [linkStatus, setLinkStatus] = useState({}); // per photo id status
   const [viewAll, setViewAll] = useState(false);
 
-  // Filter to photos linked to the current report context (links preferred, related_to fallback). When null context or viewAll, show all.
+  // Filter to photos linked to the current report context. viewAll overrides; null context with no viewAll shows empty.
   const displayedPhotos = React.useMemo(() => {
     const list = photos || [];
-    if (viewAll || currentReportContext == null) return list;
+    if (viewAll) return list;
+    if (currentReportContext == null) return [];
     const ctx = String(currentReportContext);
     const ctxReport = (recentLfi || []).find(r => String(r.id) === ctx);
     const ctxNum = ctxReport?.report_number || null;
@@ -37,7 +54,7 @@ export default function PhotoIngest({ lang = "en", onUploaded, photos, recentLfi
     if (!reportId) return;
     const report = (recentLfi || []).find(r => String(r.id) === String(reportId));
     const reportLabel = (report && report.report_number) ? report.report_number : `RPT-${reportId}`;
-    setLinkStatus(s => ({ ...s, [photoId]: "linking..." }));
+    setLinkStatus(s => ({ ...s, [photoId]: tt("photo.linking") }));
     try {
       await createLink({
         source_type: "photo",
@@ -47,13 +64,13 @@ export default function PhotoIngest({ lang = "en", onUploaded, photos, recentLfi
         target_type: "field_report",
         target_id: String(reportId),
         target_label: reportLabel,
-        notes: "Linked from Photos tab",
+        notes: tt("photo.link_note"),
       });
-      setLinkStatus(s => ({ ...s, [photoId]: "linked" }));
+      setLinkStatus(s => ({ ...s, [photoId]: tt("photo.linked_status") }));
       setTimeout(() => setLinkStatus(s => { const n={...s}; delete n[photoId]; return n; }), 2500);
       if (onUploaded) onUploaded();
     } catch {
-      setLinkStatus(s => ({ ...s, [photoId]: "error" }));
+      setLinkStatus(s => ({ ...s, [photoId]: tt("photo.link_error") }));
     }
   }
 
@@ -147,7 +164,7 @@ export default function PhotoIngest({ lang = "en", onUploaded, photos, recentLfi
               onClick={() => setViewAll(v => !v)}
               style={{ fontSize: 11 }}
             >
-              {viewAll ? "Show only for current report" : "View all photos"}
+              {viewAll ? tt("photo.filter_only_current") : tt("photo.view_all")}
             </button>
           </div>
           <div className="photo-grid">
@@ -182,12 +199,22 @@ export default function PhotoIngest({ lang = "en", onUploaded, photos, recentLfi
                       }}
                       defaultValue=""
                     >
-                      <option value="">Add to report...</option>
+                      <option value="">{tt("photo.add_to_report")}</option>
                       {(recentLfi || []).slice(0, 8).map(r => (
                         <option key={r.id} value={r.id}>{r.report_number || `RPT-${r.id}`} { (r.what_happened || r.who_involved || "").slice(0,28) }</option>
                       ))}
                     </select>
                     {linkStatus[p.id] && <span style={{fontSize:10, marginLeft:4}}>{linkStatus[p.id]}</span>}
+                  </div>
+                  <div style={{ marginTop: 6 }}>
+                    <button
+                      className="small-action"
+                      onClick={() => handleDelete(p.id)}
+                      disabled={deletingId === p.id}
+                      style={{ fontSize: 11, background: "rgba(239,68,68,0.10)", borderColor: "rgba(239,68,68,0.5)", color: "#ef4444" }}
+                    >
+                      {deletingId === p.id ? tt("common.loading") : tt("photo.delete_btn")}
+                    </button>
                   </div>
                 </div>
               </div>
