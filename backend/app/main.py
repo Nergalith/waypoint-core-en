@@ -115,6 +115,21 @@ class FieldObjectCreate(BaseModel):
 OBJECT_TYPES = {"person", "vehicle", "group", "location", "event"}
 OBJECT_STATUSES = {"active", "unknown", "no longer relevant"}
 
+REPORT_TYPE_LABELS_EN = {
+    "Observation": "Observation",
+    "Patrol": "Patrol",
+    "Rumor/Witness": "Rumor/Witness",
+    "Rumor": "Rumor",
+    "Witness": "Witness",
+    "Contact Report": "Contact Report",
+    "Contact": "Contact Report",
+    "Checkpoint": "Checkpoint",
+}
+
+
+def report_type_label_en(report_type: str) -> str:
+    return REPORT_TYPE_LABELS_EN.get(report_type, report_type or "Observation")
+
 
 def validate_coordinate_pair(latitude: Optional[float], longitude: Optional[float]) -> tuple[Optional[float], Optional[float]]:
     if latitude is None and longitude is None:
@@ -262,7 +277,7 @@ def create_lfi(payload: LfiCreate):
                     "DELETE FROM map_pins WHERE source = 'field_report' AND source_id = ?",
                     (str(lfi_id),),
                 )
-                label = f"{report_num} {payload.report_type}"[:80]
+                label = f"{report_num} {report_type_label_en(payload.report_type)}"[:80]
                 conn.execute(
                     """
                     INSERT INTO map_pins (latitude, longitude, label, source, source_id, color, category, created_at)
@@ -387,16 +402,16 @@ def update_lfi(lfi_id: int, payload: LfiUpdate):
         )
         updated = conn.execute("SELECT * FROM lfi_reports WHERE id = ?", (lfi_id,)).fetchone()
 
-    # Upsert auto pin on edit (supports coord/cat/color changes)
-    if latitude is not None and longitude is not None:
-        try:
-            with get_connection() as conn:
-                conn.execute(
-                    "DELETE FROM map_pins WHERE source = 'field_report' AND source_id = ?",
-                    (str(lfi_id),),
-                )
+    # Upsert auto pin on edit; remove stale report pin when coordinates are cleared.
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                "DELETE FROM map_pins WHERE source = 'field_report' AND source_id = ?",
+                (str(lfi_id),),
+            )
+            if latitude is not None and longitude is not None:
                 rnum = (updated or {}).get("report_number") or f"RPT-{lfi_id}"
-                label = f"{rnum} {payload.report_type}"[:80]
+                label = f"{rnum} {report_type_label_en(payload.report_type)}"[:80]
                 conn.execute(
                     """
                     INSERT INTO map_pins (latitude, longitude, label, source, source_id, color, category, created_at)
@@ -404,8 +419,8 @@ def update_lfi(lfi_id: int, payload: LfiUpdate):
                     """,
                     (latitude, longitude, label, str(lfi_id), pin_col, pin_cat, now),
                 )
-        except Exception:
-            pass
+    except Exception:
+        pass
 
     return row_to_dict(updated)
 

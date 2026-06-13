@@ -98,6 +98,25 @@ def _rel_labels(lang: str) -> dict[str, str]:
     return _RELIABILITY_LABELS.get(lang, _RELIABILITY_LABELS["en"])
 
 
+_REPORT_TYPE_LABELS: dict[str, dict[str, str]] = {
+    "en": {
+        "Observation": "Observation",
+        "Patrol": "Patrol",
+        "Rumor/Witness": "Rumor/Witness",
+        "Rumor": "Rumor",
+        "Witness": "Witness",
+        "Contact Report": "Contact Report",
+        "Contact": "Contact Report",
+        "Checkpoint": "Checkpoint",
+    },
+}
+
+
+def _report_type_label(report_type: str, lang: str) -> str:
+    labels = _REPORT_TYPE_LABELS.get(lang, _REPORT_TYPE_LABELS["en"])
+    return labels.get(report_type, report_type or "Observation")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -270,6 +289,7 @@ def _report_story(
     rel_lbl: dict[str, str],
     as_section: bool = False,
     include_individual_map: bool = True,
+    lang: str = "en",
 ) -> list:
     story: list = []
     heading = styles["h2"] if as_section else styles["h1"]
@@ -277,10 +297,11 @@ def _report_story(
     rid     = report.get("id", "?")
     rnum    = report.get("report_number") or f"RPT-{int(rid):03d}" if str(rid).isdigit() else f"RPT-{rid}"
     rtype   = report.get("report_type", "")
+    rtype_display = _report_type_label(rtype, lang)
     created = report.get("created_at", "")
     date_display = created.replace("T", " ").replace("Z", "") if created else ""
 
-    story.append(Paragraph(f"{rnum} - {rtype}", heading))
+    story.append(Paragraph(f"{rnum} - {rtype_display}", heading))
     if date_display:
         story.append(Paragraph(date_display, styles["muted"]))
 
@@ -390,7 +411,7 @@ def generate_single_pdf(report: dict[str, Any], photos: list, links: list, lang:
         Paragraph(lbl["header_single"], styles["title"]),
         Spacer(1, 6 * mm),
     ]
-    story  += _report_story(report, photos, links, styles, lbl, rel_lbl)
+    story  += _report_story(report, photos, links, styles, lbl, rel_lbl, lang=lang)
     doc.build(story)
     return path
 
@@ -444,6 +465,7 @@ def generate_bundle_pdf(reports: list, photos_by_id: dict, links_by_id: dict, la
             styles, lbl, rel_lbl,
             as_section=True,
             include_individual_map=False,
+            lang=lang,
         )
         story.append(Spacer(1, 6 * mm))
 
