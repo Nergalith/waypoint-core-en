@@ -432,6 +432,10 @@ def delete_lfi(lfi_id: int):
         if row is None:
             raise HTTPException(status_code=404, detail="Report not found.")
         conn.execute("DELETE FROM lfi_reports WHERE id = ?", (lfi_id,))
+        conn.execute(
+            "DELETE FROM map_pins WHERE source = 'field_report' AND source_id = ?",
+            (str(lfi_id),),
+        )
     return {"deleted": lfi_id}
 
 

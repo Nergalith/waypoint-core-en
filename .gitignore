@@ -13,6 +13,10 @@ frontend/.vite/
 
 # Data (user content - never commit)
 data/
+data/waypoint.db
+data/waypoint.db-wal
+data/waypoint.db-shm
+data/waypoint.db-journal
 *.log
 *.db
 *.sqlite3
