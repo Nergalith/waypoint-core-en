@@ -341,8 +341,8 @@ def finalize_lfi(lfi_id: int, lang: str = "en"):
                 (str(pdf_path), lfi_id),
             )
             report = row_to_dict(conn.execute("SELECT * FROM lfi_reports WHERE id = ?", (lfi_id,)).fetchone())
-    except Exception:
-        pass  # PDF failure must never block finalization
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {exc}") from exc
 
     return report
 

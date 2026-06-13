@@ -20,7 +20,6 @@ import json
 from io import BytesIO
 try:
     from PIL import Image as PILImage, ImageDraw, ImageFont
-    from reportlab.lib.utils import ImageReader
     _HAS_RENDER_DEPS = True
 except Exception:
     _HAS_RENDER_DEPS = False
@@ -204,7 +203,7 @@ def _render_static_map(points: list[tuple[float, float, str]], width: int = 320,
         return None
 
     try:
-        with open(map_path, "r", encoding="utf-8") as f:
+        with open(map_path, "r", encoding="utf-8-sig") as f:
             gj = json.load(f)
         feat = gj["features"][0]
         ring = feat["geometry"]["coordinates"][0]
@@ -349,18 +348,19 @@ def _report_story(
     # Embed small offline static map (test-map boundary + pin at this report's location).
     # Uses local GeoJSON only. For bundles the caller can suppress per-report maps
     # and provide a combined overview instead.
-    if include_individual_map and _HAS_RENDER_DEPS and lat is not None and lon is not None:
+    if include_individual_map and lat is not None and lon is not None:
+        if not _HAS_RENDER_DEPS:
+            raise RuntimeError("PDF map image failed: image rendering libraries are unavailable.")
         try:
-            rid = report.get("id", "?")
-            lab = f"RPT-{int(rid):03d}" if str(rid).isdigit() else f"RPT-{rid}"
+            lab = str(rnum)
             png = _render_static_map([(lat, lon, lab)])
-            if png:
-                ir = ImageReader(BytesIO(png))
-                story.append(Spacer(1, 2 * mm))
-                story.append(Image(ir, width=58 * mm, height=33 * mm))
-                story.append(Spacer(1, 1 * mm))
-        except Exception:
-            pass  # never break PDF generation on map render issues
+            if not png:
+                raise RuntimeError("static map returned no image")
+            story.append(Spacer(1, 2 * mm))
+            story.append(Image(BytesIO(png), width=58 * mm, height=33 * mm))
+            story.append(Spacer(1, 1 * mm))
+        except Exception as exc:
+            raise RuntimeError(f"PDF map image failed: {exc}") from exc
 
     if links:
         story.append(Spacer(1, 3 * mm))
@@ -434,25 +434,26 @@ def generate_bundle_pdf(reports: list, photos_by_id: dict, links_by_id: dict, la
 
     # For bundles: render ONE combined map with ALL report locations/pins (as requested).
     # Insert overview early; suppress per-section individual maps below.
-    if _HAS_RENDER_DEPS:
-        locs = []
-        for rep in reports:
-            la = rep.get("latitude")
-            lo = rep.get("longitude")
-            if la is not None and lo is not None:
-                rid = rep.get("id", "?")
-                lab = f"RPT-{int(rid):03d}" if str(rid).isdigit() else f"RPT-{rid}"
-                locs.append((la, lo, lab))
-        if locs:
-            try:
-                png = _render_static_map(locs)
-                if png:
-                    story.append(Paragraph("Test Map - Locations overview", styles["label"]))
-                    ir = ImageReader(BytesIO(png))
-                    story.append(Image(ir, width=72 * mm, height=40 * mm))
-                    story.append(Spacer(1, 4 * mm))
-            except Exception:
-                pass
+    locs = []
+    for rep in reports:
+        la = rep.get("latitude")
+        lo = rep.get("longitude")
+        if la is not None and lo is not None:
+            rid = rep.get("id", "?")
+            lab = rep.get("report_number") or (f"RPT-{int(rid):03d}" if str(rid).isdigit() else f"RPT-{rid}")
+            locs.append((la, lo, lab))
+    if locs:
+        if not _HAS_RENDER_DEPS:
+            raise RuntimeError("PDF map image failed: image rendering libraries are unavailable.")
+        try:
+            png = _render_static_map(locs)
+            if not png:
+                raise RuntimeError("static map returned no image")
+            story.append(Paragraph("Map - Locations", styles["label"]))
+            story.append(Image(BytesIO(png), width=72 * mm, height=40 * mm))
+            story.append(Spacer(1, 4 * mm))
+        except Exception as exc:
+            raise RuntimeError(f"PDF map image failed: {exc}") from exc
 
     for i, report in enumerate(reports):
         if i > 0:
