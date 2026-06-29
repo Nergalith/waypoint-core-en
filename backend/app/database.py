@@ -138,7 +138,18 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_pins_created ON map_pins(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_documents_uploaded ON documents(uploaded_at DESC);
             CREATE INDEX IF NOT EXISTS idx_links_created ON links(created_at DESC);
+            CREATE TABLE IF NOT EXISTS patrol_tracks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                callsign TEXT NOT NULL,
+                import_filename TEXT,
+                import_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                source_format TEXT,
+                point_count INTEGER,
+                geojson TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_field_objects_updated ON field_objects(updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_patrol_tracks_imported ON patrol_tracks(import_timestamp DESC);
             """
         )
 

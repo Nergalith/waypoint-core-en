@@ -49,3 +49,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Large offline map tiles
+*.mbtiles
+backend/maps/*.mbtiles

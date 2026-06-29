@@ -195,6 +195,27 @@ export async function clearAllData() {
   return r.json();
 }
 
+export async function getTracks() {
+  const r = await fetch(`${BASE}/api/tracks`);
+  if (!r.ok) throw new Error("Failed to load tracks");
+  return r.json();
+}
+
+export async function importAar(file) {
+  const form = new FormData();
+  form.append("file", file);
+  const r = await fetch(`${BASE}/api/imports/aar`, { method: "POST", body: form });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || "Import failed");
+  return data;
+}
+
+export async function deleteTrack(id) {
+  const r = await fetch(`${BASE}/api/tracks/${id}`, { method: "DELETE" });
+  if (!r.ok) throw new Error("Delete failed");
+  return r.json();
+}
+
 // For photo thumbs / full: use `${BASE}/photos/${filename}` or thumbs if present
 export function photoUrl(filename) {
   return `${BASE}/photos/${encodeURIComponent(filename)}`;

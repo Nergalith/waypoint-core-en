@@ -25,12 +25,12 @@ const RELATIONSHIPS = [
 
 const TYPE_STYLES = {
   field_report: { color: "#29d37d" },
-  photo: { color: "#42c8ff" },
-  document: { color: "#f6a43a" },
-  person: { color: "#d7e87b" },
-  vehicle: { color: "#f4d35e" },
+  photo: { color: "#8b5cf6" },
+  document: { color: "#9ca3af" },
+  person: { color: "#42c8ff" },
+  vehicle: { color: "#f6a43a" },
   group: { color: "#ff8f70" },
-  location: { color: "#9da7ff" },
+  location: { color: "#fb923c" },
   event: { color: "#ff5a4f" },
 };
 
@@ -111,66 +111,6 @@ export default function Connections({
     <div className="card">
       <h2>{tt("links.title")}</h2>
       <p style={{ color: "var(--soft)" }}>{tt("links.intro")}</p>
-      <div style={{ fontSize: 12, background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.25)", padding: "6px 10px", borderRadius: 3, marginBottom: 8 }}>
-        This shows links between your reports and field objects. Links are created when you reference the same person, vehicle, or location in multiple reports.
-      </div>
-      <div style={{ marginBottom: 8 }}>
-        <button
-          type="button"
-          className="small-action"
-          onClick={async () => {
-            if (!window.confirm("Clear all demo and session data? This deletes reports, objects, photos, documents and links from the database (files on disk stay).")) return;
-            try {
-              await clearAllData();
-              if (onCreated) await onCreated();
-              setStatus("Data cleared. Start fresh.");
-              setTimeout(() => setStatus(""), 4000);
-            } catch {
-              setStatus("Clear failed.");
-            }
-          }}
-          style={{ fontSize: 11, background: "rgba(239,68,68,0.1)", borderColor: "rgba(239,68,68,0.4)" }}
-        >
-          Clear demo data
-        </button>
-      </div>
-
-      <form onSubmit={submit} className="link-form">
-        <ObjectPicker
-          side="source"
-          title={tt("links.source")}
-          tt={tt}
-          form={form}
-          update={update}
-          selectObject={selectObject}
-          options={options}
-        />
-
-        <div>
-          <label>{tt("links.relationship")}</label>
-          <select value={form.relationship_type} onChange={(e) => update("relationship_type", e.target.value)}>
-            {RELATIONSHIPS.map((value) => <option key={value} value={value}>{relationshipLabel(value, tt)}</option>)}
-          </select>
-        </div>
-
-        <ObjectPicker
-          side="target"
-          title={tt("links.target")}
-          tt={tt}
-          form={form}
-          update={update}
-          selectObject={selectObject}
-          options={options}
-        />
-
-        <div className="link-notes">
-          <label>{tt("links.notes")}</label>
-          <input value={form.notes} onChange={(e) => update("notes", e.target.value)} placeholder={tt("links.notes_placeholder")} />
-        </div>
-
-        <button className="big-button" type="submit" title={tt("links.create")}>{tt("links.create")}</button>
-      </form>
-
       {status && <div className="status">{status}</div>}
 
       <div className="graph-summary">
@@ -180,19 +120,29 @@ export default function Connections({
         <span>{tt("links.summary_isolated")}: <strong>{graph.isolatedCount}</strong></span>
       </div>
 
-      <div className="graph-workspace">
+      <div className="graph-workspace graph-workspace-wide">
         <RelationshipGraph
           tt={tt}
           graph={graph}
           selected={selection}
           onSelect={setSelection}
         />
-        <SelectionPanel
-          tt={tt}
-          selection={selection}
-          onOpenSource={openSource}
-          onShowOnMap={showOnMap}
-        />
+        <div className="graph-details link-side-panel">
+          <SelectionPanel
+            tt={tt}
+            selection={selection}
+            onOpenSource={openSource}
+            onShowOnMap={showOnMap}
+          />
+          <LinkForm
+            tt={tt}
+            form={form}
+            update={update}
+            submit={submit}
+            selectObject={selectObject}
+            options={options}
+          />
+        </div>
       </div>
 
       <div className="link-list">
@@ -224,7 +174,7 @@ function RelationshipGraph({ tt, graph, selected, onSelect }) {
   return (
     <div className="graph-panel" aria-label={tt("links.graph_title")}>
       <div className="graph-title">{tt("links.graph_title")}</div>
-      <svg className="relationship-graph" viewBox="0 0 980 500" role="img">
+      <svg className="relationship-graph" viewBox="0 0 1120 620" role="img">
         {graph.edges.map((edge) => {
           const source = graph.nodeByKey.get(edge.sourceKey);
           const target = graph.nodeByKey.get(edge.targetKey);
@@ -265,9 +215,9 @@ function RelationshipGraph({ tt, graph, selected, onSelect }) {
               transform={`translate(${node.x}, ${node.y})`}
               onClick={() => onSelect({ kind: "node", item: node })}
             >
-              <circle r={22} fill={style.color} />
+              <circle r={Math.min(34, 22 + node.degree * 3)} fill={style.color} />
               <text y="-2" className="graph-node-badge">{tt(`object.${node.type}_badge`)}</text>
-              <text y={node.labelY} className="graph-node-label">{shorten(node.label, 20)}</text>
+              <text y={node.labelY} className="graph-node-label">{shorten(node.label, 25)}</text>
             </g>
           );
         })}
@@ -279,7 +229,7 @@ function RelationshipGraph({ tt, graph, selected, onSelect }) {
 function SelectionPanel({ tt, selection, onOpenSource, onShowOnMap }) {
   if (!selection) {
     return (
-      <div className="graph-details">
+      <div className="selection-details">
         <h3>{tt("links.details_title")}</h3>
         <p>{tt("links.details_empty")}</p>
       </div>
@@ -289,7 +239,7 @@ function SelectionPanel({ tt, selection, onOpenSource, onShowOnMap }) {
   if (selection.kind === "edge") {
     const edge = selection.item;
     return (
-      <div className="graph-details">
+      <div className="selection-details">
         <h3>{tt("links.edge_title")}</h3>
         <div className="detail-line"><strong>{tt("links.relationship")}:</strong> {relationshipLabel(edge.relationship, tt)}</div>
         <div className="detail-line"><strong>{tt("links.source")}:</strong> {edge.sourceLabel}</div>
@@ -301,7 +251,7 @@ function SelectionPanel({ tt, selection, onOpenSource, onShowOnMap }) {
 
   const node = selection.item;
   return (
-    <div className="graph-details">
+    <div className="selection-details">
       <h3>{tt("links.node_title")}</h3>
       <span className="object-pill">{labelObjectType(node.type, tt)}</span>
       <div className="detail-line"><strong>{node.label}</strong></div>
@@ -316,6 +266,27 @@ function SelectionPanel({ tt, selection, onOpenSource, onShowOnMap }) {
         {node.coordinates && <button className="small-action" title={tt("links.show_on_map")} onClick={() => onShowOnMap(node)}>{tt("links.show_on_map")}</button>}
       </div>
     </div>
+  );
+}
+
+
+function LinkForm({ tt, form, update, submit, selectObject, options }) {
+  return (
+    <form onSubmit={submit} className="link-form link-form-compact">
+      <ObjectPicker side="source" title={tt("links.source")} tt={tt} form={form} update={update} selectObject={selectObject} options={options} />
+      <div>
+        <label>{tt("links.relationship")}</label>
+        <select value={form.relationship_type} onChange={(e) => update("relationship_type", e.target.value)}>
+          {RELATIONSHIPS.map((value) => <option key={value} value={value}>{relationshipLabel(value, tt)}</option>)}
+        </select>
+      </div>
+      <ObjectPicker side="target" title={tt("links.target")} tt={tt} form={form} update={update} selectObject={selectObject} options={options} />
+      <div className="link-notes">
+        <label>{tt("links.notes")}</label>
+        <input value={form.notes} onChange={(e) => update("notes", e.target.value)} placeholder={tt("links.notes_placeholder")} />
+      </div>
+      <button className="big-button" type="submit" title={tt("links.create")}>{tt("links.create")}</button>
+    </form>
   );
 }
 
@@ -461,12 +432,12 @@ function ensureNode(nodeByKey, metadata, key, type, id, fallbackLabel) {
 
 function layoutNodes(nodes) {
   if (nodes.length === 1) {
-    return [{ ...nodes[0], x: 450, y: 215, labelY: 42 }];
+    return [{ ...nodes[0], x: 560, y: 300, labelY: 42 }];
   }
-  const centerX = 490;
-  const centerY = 250;
-  const radiusX = nodes.length > 8 ? 390 : 315;
-  const radiusY = nodes.length > 8 ? 185 : 155;
+  const centerX = 560;
+  const centerY = 300;
+  const radiusX = nodes.length > 8 ? 455 : 365;
+  const radiusY = nodes.length > 8 ? 235 : 195;
   return nodes
     .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label))
     .map((node, index) => {

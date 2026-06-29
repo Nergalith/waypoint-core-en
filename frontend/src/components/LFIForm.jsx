@@ -59,20 +59,20 @@ export default function LFIForm({
   const FIELD_DEFS = useMemo(() => {
     const common = {
       when: { key: "when_happened", label: tt("lfi.when_label"), placeholder: tt("lfi.when_placeholder"), tip: "" },
-      notes: { key: "notes", label: tt("lfi.notes_label"), placeholder: tt("lfi.notes_placeholder"), tip: "", textarea: true },
+      notes: { key: "notes", label: tt("lfi.notes_label"), placeholder: tt("lfi.notes_placeholder"), tip: "", textarea: true, wide: true },
       reliability: true,
     };
     const defs = {
       Observation: [
-        { key: "who_involved", label: "Who was involved", placeholder: "Persons, vehicle, group...", tip: "Simple description." },
-        { key: "what_happened", label: "What happened", placeholder: "What exactly happened or was seen", tip: "Facts only.", textarea: true },
-        { key: "where_happened", label: "Where", placeholder: "Location description or landmark", tip: "" },
+        { key: "who_involved", label: "Who was involved", placeholder: tt("lfi.who_placeholder"), tip: "Simple description." },
+        { key: "what_happened", label: "What happened", placeholder: tt("lfi.what_placeholder"), tip: "Facts only.", textarea: true, wide: true },
+        { key: "where_happened", label: "Where", placeholder: tt("lfi.where_placeholder"), tip: "" },
         common.when,
         common.notes,
       ],
       Patrol: [
         { key: "who_involved", label: "Size", placeholder: "How many / what size (e.g. 4 men, 2 vehicles)", tip: "SALUTE: Size" },
-        { key: "what_happened", label: "Activity", placeholder: "What they were doing (moving, setting up...)", tip: "SALUTE: Activity", textarea: true },
+        { key: "what_happened", label: "Activity", placeholder: "What they were doing (moving, setting up...)", tip: "SALUTE: Activity", textarea: true, wide: true },
         { key: "where_happened", label: "Location", placeholder: "Where observed", tip: "SALUTE: Location" },
         { key: "related_to", label: "Unit / Uniform", placeholder: "Uniform, unit markings, ID if known", tip: "SALUTE: Unit/Uniform" },
         common.when,
@@ -80,14 +80,14 @@ export default function LFIForm({
       ],
       "Rumor/Witness": [
         { key: "who_involved", label: "Who told you", placeholder: "Source of the information (witness name or description)", tip: "The 5 Ws" },
-        { key: "what_happened", label: "What did they say", placeholder: "Summary of what the person reported", tip: "", textarea: true },
+        { key: "what_happened", label: "What did they say", placeholder: "Summary of what the person reported", tip: "", textarea: true, wide: true },
         { key: "where_happened", label: "Where did it happen", placeholder: "Place described by the source", tip: "" },
         common.when,
-        { key: "notes", label: "Why do they think this", placeholder: "Reason or basis for the information", tip: "5th W: Why", textarea: true },
+        { key: "notes", label: "Why do they think this", placeholder: "Reason or basis for the information", tip: "5th W: Why", textarea: true, wide: true },
       ],
       Checkpoint: [
         { key: "who_involved", label: "Vehicle description", placeholder: "Type, color, plate, markings", tip: "" },
-        { key: "what_happened", label: "Direction of travel, Number of occupants", placeholder: "Direction (northbound etc.) and number of people", tip: "", textarea: true },
+        { key: "what_happened", label: "Direction of travel, Number of occupants", placeholder: "Direction (northbound etc.) and number of people", tip: "", textarea: true, wide: true },
         { key: "where_happened", label: "Location", placeholder: "Where the checkpoint or sighting was", tip: "" },
         { key: "related_to", label: "Weapons visible", placeholder: "Any weapons seen? Describe briefly", tip: "" },
         common.when,
@@ -95,7 +95,7 @@ export default function LFIForm({
       ],
       "Contact Report": [
         { key: "who_involved", label: "Who made contact", placeholder: "Your unit / patrol or the element that had contact", tip: "" },
-        { key: "what_happened", label: "What happened (Friendly/Hostile/Unknown)", placeholder: "Sequence of events and nature of contact", tip: "", textarea: true },
+        { key: "what_happened", label: "What happened (Friendly/Hostile/Unknown)", placeholder: "Sequence of events and nature of contact", tip: "", textarea: true, wide: true },
         { key: "related_to", label: "Casualties", placeholder: "Casualties, damage, result", tip: "" },
         { key: "where_happened", label: "Location", placeholder: "Where contact occurred", tip: "" },
         common.when,
@@ -226,15 +226,15 @@ export default function LFIForm({
     if (deletingId) return;
     const report = (recentLfi || []).find(r => r.id === id) || {};
     const rnum = report.report_number || `RPT-${id}`;
-    if (!window.confirm(`Are you sure you want to delete ${rnum}?`)) return;
+    if (!window.confirm(tt("lfi.delete_confirm_initial", { report: rnum }))) return;
 
     // Safe delete per issue 6: extra warning if no PDF exported yet
     const hasPdf = !!report.pdf_path;
     const isFinal = report.status === "finalized";
     if (!hasPdf && !isFinal) {
-      if (!window.confirm(`This report has not been exported to PDF yet. Delete anyway? Deletion cannot be undone. Linked photos/documents stay in storage.`)) return;
+      if (!window.confirm(tt("lfi.delete_confirm_unexported"))) return;
     } else {
-      if (!window.confirm(`Delete ${rnum}? This cannot be undone. Linked photos and documents will remain in storage.`)) return;
+      if (!window.confirm(tt("lfi.delete_confirm_final", { report: rnum }))) return;
     }
 
     setDeletingId(id);
@@ -360,7 +360,7 @@ export default function LFIForm({
       <div style={{ marginBottom: 10 }}>
         <button
           type="button"
-          className="small-action"
+          className="small-action new-report-action"
           onClick={() => {
             if (onStartNewReport) onStartNewReport();
             else {
@@ -389,8 +389,8 @@ export default function LFIForm({
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
-        <label>{tt("lfi.type_label")}</label>
+      <form onSubmit={handleSubmit} className="lfi-form-grid">
+        <div className="lfi-field"><label>{tt("lfi.type_label")}</label>
         <select
           value={form.report_type}
           onChange={(e) => {
@@ -410,11 +410,11 @@ export default function LFIForm({
           {REPORT_TYPES.map(([value, label]) => (
             <option key={value} value={value}>{label}</option>
           ))}
-        </select>
+        </select></div>
 
         {/* Dynamic fields based on report type (plain language, per brief) */}
         {FIELD_DEFS.map((f, idx) => (
-          <div key={idx}>
+          <div key={idx} className={`lfi-field ${f.wide ? "wide" : ""}`}>
             <label>{f.label}</label>
             {f.textarea ? (
               <textarea
@@ -435,7 +435,7 @@ export default function LFIForm({
         ))}
 
         {/* Always show lat/lon for map pin (if provided). Location text goes in Where field above. */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className="lfi-field coord-pair wide">
           <div>
             <label>{tt("lfi.lat_label")}</label>
             <input
@@ -459,7 +459,7 @@ export default function LFIForm({
         </div>
         <div className="tooltip">{tt("lfi.geo_tip")}</div>
 
-        <label>{tt("lfi.reliability_label")}</label>
+        <div className="lfi-field wide"><label>{tt("lfi.reliability_label")}</label>
         <div className="reliability-grid">
           {RELIABILITIES.map((r) => (
             <button
@@ -476,10 +476,10 @@ export default function LFIForm({
         </div>
         <div className="tooltip" style={{ marginTop: 4 }}>
           {tt("lfi.reliability_tip", { label: currentRel.label, tip: currentRel.tip })}
-        </div>
+        </div></div>
 
         {/* NEW: Pin category and status color for auto map pin pipeline */}
-        <label>{tt("lfi.pin_category_label") || "Categorie du point (carte)"}</label>
+        <div className="lfi-field"><label>{tt("lfi.pin_category_label")}</label>
         <select
           value={form.pin_category || "general"}
           onChange={(e) => update("pin_category", e.target.value)}
@@ -487,9 +487,9 @@ export default function LFIForm({
           {Object.entries(PIN_CATEGORIES).map(([key, cat]) => (
             <option key={key} value={key}>{cat.symbol} {tt(`pin.cat.${key}`) || cat.labelEn || key}</option>
           ))}
-        </select>
+        </select></div>
 
-        <label>{tt("lfi.pin_status_label") || "Pin status color"}</label>
+        <div className="lfi-field"><label>{tt("lfi.pin_status_label")}</label>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {Object.entries(STATUS_COLORS).map(([key, c]) => {
             const active = (form.pin_color || "#eab308") === c.hex;
@@ -511,10 +511,10 @@ export default function LFIForm({
           })}
         </div>
         <div className="tooltip" style={{ marginTop: 2, fontSize: 11 }}>
-          {tt("map.colors") || "Rouge=hostile, Vert=ami, Jaune=inconnu, Bleu=neutre, Gris=inactif. Forme = categorie."}
-        </div>
+          {tt("map.colors")}
+        </div></div>
 
-        <button type="submit" className="big-button" disabled={saving}>
+        <button type="submit" className="big-button wide" disabled={saving}>
           {saving ? tt("lfi.submit_saving") : editingId ? tt("lfi.update") : tt("lfi.submit")}
         </button>
       </form>
@@ -574,7 +574,7 @@ export default function LFIForm({
             <div
               key={l.id || i}
               id={`source-lfi-${l.id}`}
-              className="list-item"
+              className="list-item report-row"
               style={{
                 fontSize: 13,
                 opacity: isFinalized ? 0.82 : 1,

@@ -6,6 +6,7 @@ import Chronologie from "./components/Chronologie.jsx";
 import Documents from "./components/Documents.jsx";
 import Connections from "./components/Connections.jsx";
 import FieldObjects from "./components/FieldObjects.jsx";
+import Reference from "./components/Reference.jsx";
 import { getDocuments, getFieldObjects, getLfi, getLinks, getPhotos, getPins, getStorageSize, health } from "./api";
 import { DEFAULT_LANG, t } from "./i18n";
 
@@ -25,7 +26,7 @@ const BLANK_LFI_FORM = {
 };
 
 export default function App() {
-  const [active, setActive] = useState("lfi"); // lfi | photos | map | documents | objects | connections | chronologie
+  const [active, setActive] = useState("lfi"); // lfi | photos | map | documents | objects | connections | chronologie | reference
   const [lfiList, setLfiList] = useState([]);
   const [lfiDraft, setLfiDraft] = useState(BLANK_LFI_FORM);
   const [lfiDraftRel, setLfiDraftRel] = useState("F");
@@ -137,7 +138,7 @@ export default function App() {
           <span style={{ opacity: 0.7 }}>{tt("app.flow")}</span>
           <div className="header-controls">
             <button type="button" className="theme-toggle" onClick={toggleTheme}>
-              {theme === "dark" ? tt("theme.light") : tt("theme.dark")}
+              {theme === "dark" ? tt("theme.day") : tt("theme.night")}
             </button>
           </div>
         </div>
@@ -165,6 +166,9 @@ export default function App() {
         <button className={active === "chronologie" ? "active" : ""} onClick={() => setActive("chronologie")}>
           {tt("nav.chronologie")}
         </button>
+        <button className={active === "reference" ? "active" : ""} onClick={() => setActive("reference")}>
+          {tt("nav.reference")}
+        </button>
         <button onClick={refreshAll} className="refresh-nav" title={tt("refresh.tooltip") || "Reloads all data from the database."}>
           {tt("nav.refresh")}
         </button>
@@ -172,11 +176,11 @@ export default function App() {
 
       <div className="container">
         <div className="workflow-strip" aria-label={tt("workflow.title")}>
-          <span>{tt("workflow.step1")}</span>
-          <span>{tt("workflow.step2")}</span>
-          <span>{tt("workflow.step3")}</span>
-          <span>{tt("workflow.step4")}</span>
-          <span>{tt("workflow.step5")}</span>
+          <span className={active === "lfi" ? "active" : ""}>{tt("workflow.step1")}</span>
+          <span className={["photos", "documents"].includes(active) ? "active" : ""}>{tt("workflow.step2")}</span>
+          <span className={active === "map" ? "active" : ""}>{tt("workflow.step3")}</span>
+          <span className={active === "chronologie" ? "active" : ""}>{tt("workflow.step4")}</span>
+          <span className={["objects", "connections"].includes(active) ? "active" : ""}>{tt("workflow.step5")}</span>
         </div>
 
         {active === "lfi" && (
@@ -288,6 +292,8 @@ export default function App() {
           />
         )}
 
+        {active === "reference" && <Reference />}
+
         {/* Always show a tiny combined status bar when not on map */}
         {active !== "map" && active !== "chronologie" && (
           <div className="card" style={{ padding: "10px 14px", fontSize: 13 }}>
@@ -305,7 +311,7 @@ export default function App() {
           <button onClick={refreshAll} className="small-action" title={tt("refresh.tooltip") || "Reloads all data from the database."}>{tt("status.refresh")}</button>
           {lastRefresh && (
             <span style={{ marginLeft: 8, fontSize: 12, color: "var(--muted)" }}>
-              Refreshed at {lastRefresh}
+              {tt("status.last_refresh", { time: lastRefresh })}
             </span>
           )}
         </div>

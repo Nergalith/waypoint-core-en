@@ -27,6 +27,7 @@ from .database import (
 )
 from .services.document_processor import extract_document, is_supported_document
 from .services.photo_processor import compress_for_storage, extract_photo_metadata, is_supported_photo
+from .routers import imports, tiles
 from .services.pdf_generator import (
     generate_bundle_pdf,
     generate_single_pdf,
@@ -189,6 +190,8 @@ app.add_middleware(
 
 # Static serving for photos and thumbs (offline friendly)
 app.mount("/photos", StaticFiles(directory=str(PHOTOS_DIR)), name="photos")
+app.include_router(tiles.router)
+app.include_router(imports.router)
 
 
 # ---------------- Health ----------------

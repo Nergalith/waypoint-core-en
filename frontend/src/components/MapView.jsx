@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useRef, useState } from "react";
 import * as L from "leaflet";
-import { createPin, deletePin } from "../api";
+import { createPin, deletePin, getTracks, importAar } from "../api";
 import { t } from "../i18n";
 import { createPinIcon, DEFAULT_PIN_COLOR, PIN_CATEGORIES, STATUS_COLORS } from "../pinConstants";
 
@@ -14,16 +14,25 @@ const DEFAULT_LAYER_VISIBILITY = {
   rivers: false,
   places: false,
   pins: true,
+  tracks: true,
 };
 const CHUNK_SIZE = 120;
 const DEV_MAP_LOG = import.meta.env?.DEV;
+const CALLSIGN_COLORS = {
+  ALPHA: "#00BFFF",
+  BRAVO: "#FF6B35",
+  CHARLIE: "#7CFC00",
+  DELTA: "#FFD700",
+  ECHO: "#FF69B4",
+};
 
 export default function MapView({ lang = "en", lfiList, photoList, documentList, objectList = [], pinList, focusCoordinates, refreshAll, onUseCoordinates, onOpenSource }) {
   const tt = (key, vars = {}) => t(key, lang, vars);
 
   const mapRef = useRef(null);
   const leafletMap = useRef(null);
-  const layersRef = useRef({ pins: null, country: null, prefectures: null, roads: null, rivers: null, places: null, borders: null });
+  const layersRef = useRef({ pins: null, country: null, prefectures: null, roads: null, rivers: null, places: null, borders: null, tracks: null });
+  const trackLayersRef = useRef({});
   const layerVisibilityRef = useRef(DEFAULT_LAYER_VISIBILITY);
   const packageBoundsRef = useRef(null);
   const pickCoordsModeRef = useRef(false);
@@ -36,6 +45,9 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   const [pinCategory, setPinCategory] = useState("general");
   const [pinStatusColor, setPinStatusColor] = useState(DEFAULT_PIN_COLOR);
   const [pinSaving, setPinSaving] = useState(false);
+  const [tracks, setTracks] = useState([]);
+  const [trackVisibility, setTrackVisibility] = useState({});
+  const [showAarImport, setShowAarImport] = useState(false);
 
   useEffect(() => {
     pickCoordsModeRef.current = pickCoordsMode;
@@ -45,6 +57,10 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     layerVisibilityRef.current = layerVisibility;
     applyLayerVisibility();
   }, [layerVisibility]);
+
+  useEffect(() => {
+    applyLayerVisibility();
+  }, [trackVisibility]);
 
   const allGeoItems = React.useMemo(() => {
     const items = [];
@@ -118,10 +134,13 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       places: L.layerGroup(),
       borders: L.layerGroup(),
       pins: L.layerGroup(),
+      tracks: L.layerGroup(),
     };
     applyLayerVisibility(map);
     leafletMap.current = map;
+    addMbtilesBaseLayer(map);
     loadOfflineMapPackage(map);
+    loadPatrolTracks(map);
 
     map.on("click", async (e) => {
       const { lat, lng } = e.latlng;
@@ -172,6 +191,45 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     map.setView([lat, lon], Math.max(map.getZoom(), 10), { animate: true });
     setStatus(tt("map.status_focus", { lat: lat.toFixed(4), lon: lon.toFixed(4) }));
   }, [focusCoordinates]);
+
+  async function loadPatrolTracks(map = leafletMap.current) {
+    if (!map || !layersRef.current.tracks) return;
+    try {
+      const loaded = await getTracks();
+      setTracks(loaded);
+      renderTracks(loaded, map);
+    } catch (err) {
+      mapLog("tracks load failed", err);
+    }
+  }
+
+  function renderTracks(trackList, map = leafletMap.current) {
+    if (!map || !layersRef.current.tracks) return;
+    layersRef.current.tracks.clearLayers();
+    trackLayersRef.current = {};
+    (trackList || []).forEach((track) => {
+      const callsign = String(track.callsign || "UNKNOWN").toUpperCase();
+      if (!trackLayersRef.current[callsign]) {
+        trackLayersRef.current[callsign] = L.layerGroup().addTo(layersRef.current.tracks);
+      }
+      const coords = track.geojson?.coordinates || [];
+      const latlngs = coords.map((coord) => [coord[1], coord[0]]).filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon));
+      if (latlngs.length < 2) return;
+      L.polyline(latlngs, { color: getCallsignColor(callsign), weight: 2.5, opacity: 0.9 })
+        .bindPopup(`<b>${escapeHtml(callsign)}</b><br/>${escapeHtml(track.filename || "AAR import")}<br/>${escapeHtml(track.timestamp || "")}<br/>${Number(track.point_count || latlngs.length)} points`)
+        .addTo(trackLayersRef.current[callsign]);
+    });
+    const nextVisibility = {};
+    Object.keys(trackLayersRef.current).forEach((callsign) => { nextVisibility[callsign] = trackVisibility[callsign] !== false; });
+    setTrackVisibility(nextVisibility);
+    applyLayerVisibility(map);
+  }
+
+  async function handleAarFile(file) {
+    const result = await importAar(file);
+    await loadPatrolTracks();
+    return result;
+  }
 
   function renderPins(items) {
     const map = leafletMap.current;
@@ -428,11 +486,18 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       places: layersRef.current.places,
       borders: layersRef.current.borders,
       pins: layersRef.current.pins,
+      tracks: layersRef.current.tracks,
     }).forEach(([key, layer]) => {
       if (!layer) return;
       const visible = key === "borders" ? true : visibility[key] !== false;
       if (visible && !map.hasLayer(layer)) layer.addTo(map);
       if (!visible && map.hasLayer(layer)) map.removeLayer(layer);
+    });
+    Object.entries(trackLayersRef.current).forEach(([callsign, layer]) => {
+      if (!layersRef.current.tracks) return;
+      const visible = trackVisibility[callsign] !== false;
+      if (visible && !layersRef.current.tracks.hasLayer(layer)) layer.addTo(layersRef.current.tracks);
+      if (!visible && layersRef.current.tracks.hasLayer(layer)) layersRef.current.tracks.removeLayer(layer);
     });
   }
 
@@ -459,6 +524,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
           >
             {pickCoordsMode ? tt("map.pick_cancel") : tt("map.pick_coords")}
           </button>
+          <button className="small-action" title={tt("map.import_aar")} onClick={() => setShowAarImport(true)}>{tt("map.import_aar")}</button>
           <button className="small-action" title={tt("map.clear")} onClick={clearManualPins} style={{ background: "rgba(255, 90, 79, 0.14)", color: "var(--text)", borderColor: "var(--danger)" }}>{tt("map.clear")}</button>
           <button className="small-action" title={tt("map.help_title")} onClick={() => setShowHelp(!showHelp)} style={{ marginLeft: 6 }}>{tt("map.help")}</button>
         </div>
@@ -466,7 +532,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       <p className="tab-intro">{tt("map.intro")}</p>
 
       <div className="map-layer-toggles" aria-label={tt("map.layers")}>
-        {["prefectures", "roads", "rivers", "places", "pins"].map((key) => (
+        {["prefectures", "roads", "rivers", "places", "pins", "tracks"].map((key) => (
           <label key={key}>
             <input
               type="checkbox"
@@ -474,6 +540,16 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
               onChange={() => toggleLayer(key)}
             />
             {tt(`map.layer_${key}`)}
+          </label>
+        ))}
+        {Object.keys(trackLayersRef.current).map((callsign) => (
+          <label key={callsign}>
+            <input
+              type="checkbox"
+              checked={trackVisibility[callsign] !== false}
+              onChange={() => setTrackVisibility((current) => ({ ...current, [callsign]: current[callsign] === false }))}
+            />
+            {callsign}
           </label>
         ))}
       </div>
@@ -495,6 +571,14 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       <div style={{ fontSize: 11, marginTop: 8, color: "var(--muted)" }}>
         <span dangerouslySetInnerHTML={{ __html: tt("map.colors") }} />
       </div>
+
+      {showAarImport && (
+        <AARImport
+          tt={tt}
+          onClose={() => setShowAarImport(false)}
+          onImport={handleAarFile}
+        />
+      )}
 
       {pendingPin && (
         <div style={{
@@ -599,6 +683,65 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function addMbtilesBaseLayer(map) {
+  const layer = L.tileLayer("http://127.0.0.1:8000/api/mbtiles/{z}/{x}/{y}", {
+    maxZoom: 18,
+    tileSize: 256,
+    errorTileUrl: "",
+  });
+  layer.on("tileerror", () => mapLog("MBTiles tile unavailable"));
+  layer.addTo(map);
+}
+
+function getCallsignColor(callsign) {
+  if (CALLSIGN_COLORS[callsign]) return CALLSIGN_COLORS[callsign];
+  let hash = 0;
+  for (let i = 0; i < callsign.length; i += 1) {
+    hash = callsign.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return `hsl(${Math.abs(hash) % 360}, 75%, 55%)`;
+}
+
+function AARImport({ tt, onClose, onImport }) {
+  const [status, setStatus] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+
+  async function handleFile(file) {
+    if (!file || loading) return;
+    setLoading(true);
+    setStatus(null);
+    try {
+      const data = await onImport(file);
+      setStatus({ ok: true, message: tt("map.aar_imported", { callsigns: (data.callsigns || []).join(", ") }) });
+    } catch (err) {
+      setStatus({ ok: false, message: tt("map.aar_error", { message: err.message || "Import failed" }) });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="aar-overlay">
+      <div className="aar-card">
+        <div
+          className="aar-dropzone"
+          onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files?.[0]); }}
+          onDragOver={(e) => e.preventDefault()}
+        >
+          {loading ? tt("map.aar_importing") : tt("map.aar_drop")}
+          <input
+            type="file"
+            accept=".zip,.kml,.gpx"
+            onChange={(e) => handleFile(e.target.files?.[0])}
+          />
+        </div>
+        {status && <div className={`aar-status ${status.ok ? "ok" : "error"}`}>{status.message}</div>}
+        <button className="small-action" onClick={onClose}>{tt("map.aar_close")}</button>
+      </div>
     </div>
   );
 }
