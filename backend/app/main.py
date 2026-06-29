@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import json
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +35,8 @@ from .services.pdf_generator import (
     get_reports_dir_size,
     REPORTS_DIR,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------- Models (Pydantic for API) ----------------
 
@@ -416,7 +419,7 @@ def update_lfi(lfi_id: int, payload: LfiUpdate):
                 (str(lfi_id),),
             )
             if latitude is not None and longitude is not None:
-                rnum = (updated or {}).get("report_number") or f"RPT-{lfi_id}"
+                rnum = updated["report_number"] if updated else f"RPT-{lfi_id}"
                 label = f"{rnum} {report_type_label_en(payload.report_type)}"[:80]
                 conn.execute(
                     """
@@ -426,7 +429,7 @@ def update_lfi(lfi_id: int, payload: LfiUpdate):
                     (latitude, longitude, label, str(lfi_id), pin_col, pin_cat, now),
                 )
     except Exception:
-        pass
+        logger.exception("Failed to update map pin for LFI report %s", lfi_id)
 
     return row_to_dict(updated)
 
@@ -437,11 +440,19 @@ def delete_lfi(lfi_id: int):
         row = conn.execute("SELECT id FROM lfi_reports WHERE id = ?", (lfi_id,)).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Report not found.")
-        conn.execute("DELETE FROM lfi_reports WHERE id = ?", (lfi_id,))
         conn.execute(
             "DELETE FROM map_pins WHERE source = 'field_report' AND source_id = ?",
             (str(lfi_id),),
         )
+        conn.execute(
+            """DELETE FROM links WHERE
+               (source_type = 'lfi' AND source_id = ?)
+               OR (target_type = 'lfi' AND target_id = ?)
+               OR (source_type = 'field_report' AND source_id = ?)
+               OR (target_type = 'field_report' AND target_id = ?)""",
+            (str(lfi_id), str(lfi_id), str(lfi_id), str(lfi_id)),
+        )
+        conn.execute("DELETE FROM lfi_reports WHERE id = ?", (lfi_id,))
     return {"deleted": lfi_id}
 
 
@@ -623,7 +634,7 @@ def delete_photo(photo_id: int):
             "SELECT COUNT(*) FROM map_pins WHERE source = 'photo' AND source_id = ?",
             (str(photo_id),),
         ).fetchone()[0]
-        print(f"Photo delete cleanup: photo_id={photo_id} remaining_links={remaining_links} remaining_pins={remaining_pins}")
+        logger.info("Photo delete cleanup: photo_id=%s remaining_links=%s remaining_pins=%s", photo_id, remaining_links, remaining_pins)
         conn.execute("DELETE FROM photos WHERE id = ?", (photo_id,))
     return {"deleted": photo_id}
 
@@ -775,7 +786,7 @@ def delete_document(document_id: int):
             "SELECT COUNT(*) FROM map_pins WHERE source = 'document' AND source_id = ?",
             (str(document_id),),
         ).fetchone()[0]
-        print(f"Document delete cleanup: document_id={document_id} remaining_links={remaining_links} remaining_pins={remaining_pins}")
+        logger.info("Document delete cleanup: document_id=%s remaining_links=%s remaining_pins=%s", document_id, remaining_links, remaining_pins)
         conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
     return {"deleted": document_id}
 
