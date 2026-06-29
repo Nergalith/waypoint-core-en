@@ -17,6 +17,7 @@ from reportlab.platypus import (
 
 # Offline map rendering (Pillow already a backend dep via photo processor; stdlib json)
 import json
+import logging
 from io import BytesIO
 try:
     from PIL import Image as PILImage, ImageDraw, ImageFont
@@ -26,6 +27,7 @@ except Exception:
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
 REPORTS_DIR = ROOT_DIR / "Waypoint Reports"
+logger = logging.getLogger(__name__)
 
 MONTH_ABBREV = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
                 "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
@@ -351,12 +353,14 @@ def _report_story(
     if include_individual_map and lat is not None and lon is not None:
         try:
             png = _render_static_map([(lat, lon, str(rnum))])
-            if png:
-                story.append(Spacer(1, 2 * mm))
-                story.append(Image(BytesIO(png), width=58 * mm, height=33 * mm))
-                story.append(Spacer(1, 1 * mm))
-        except Exception:
-            pass  # map render failure must not block PDF generation
+            if not png:
+                raise RuntimeError("static map returned no image")
+            story.append(Spacer(1, 2 * mm))
+            story.append(Image(BytesIO(png), width=58 * mm, height=33 * mm))
+            story.append(Spacer(1, 1 * mm))
+        except Exception as e:
+            logger.error(f"PDF map render failed: {e}")
+            raise
 
     if links:
         story.append(Spacer(1, 3 * mm))
@@ -441,12 +445,14 @@ def generate_bundle_pdf(reports: list, photos_by_id: dict, links_by_id: dict, la
     if locs:
         try:
             png = _render_static_map(locs)
-            if png:
-                story.append(Paragraph("Map - Locations", styles["label"]))
-                story.append(Image(BytesIO(png), width=72 * mm, height=40 * mm))
-                story.append(Spacer(1, 4 * mm))
-        except Exception:
-            pass  # map render failure must not block PDF generation
+            if not png:
+                raise RuntimeError("static map returned no image")
+            story.append(Paragraph("Map - Locations", styles["label"]))
+            story.append(Image(BytesIO(png), width=72 * mm, height=40 * mm))
+            story.append(Spacer(1, 4 * mm))
+        except Exception as e:
+            logger.error(f"PDF map render failed: {e}")
+            raise
 
     for i, report in enumerate(reports):
         if i > 0:

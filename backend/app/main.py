@@ -600,6 +600,27 @@ def delete_photo(photo_id: int):
                         p.unlink()
                     except Exception:
                         pass
+        conn.execute(
+            """DELETE FROM links WHERE
+               (source_type = 'photo' AND source_id = ?)
+               OR (target_type = 'photo' AND target_id = ?)""",
+            (str(photo_id), str(photo_id)),
+        )
+        conn.execute(
+            "DELETE FROM map_pins WHERE source = 'photo' AND source_id = ?",
+            (str(photo_id),),
+        )
+        remaining_links = conn.execute(
+            """SELECT COUNT(*) FROM links WHERE
+               (source_type = 'photo' AND source_id = ?)
+               OR (target_type = 'photo' AND target_id = ?)""",
+            (str(photo_id), str(photo_id)),
+        ).fetchone()[0]
+        remaining_pins = conn.execute(
+            "SELECT COUNT(*) FROM map_pins WHERE source = 'photo' AND source_id = ?",
+            (str(photo_id),),
+        ).fetchone()[0]
+        print(f"Photo delete cleanup: photo_id={photo_id} remaining_links={remaining_links} remaining_pins={remaining_pins}")
         conn.execute("DELETE FROM photos WHERE id = ?", (photo_id,))
     return {"deleted": photo_id}
 
@@ -731,6 +752,27 @@ def delete_document(document_id: int):
                     p.unlink()
                 except Exception:
                     pass
+        conn.execute(
+            """DELETE FROM links WHERE
+               (source_type = 'document' AND source_id = ?)
+               OR (target_type = 'document' AND target_id = ?)""",
+            (str(document_id), str(document_id)),
+        )
+        conn.execute(
+            "DELETE FROM map_pins WHERE source = 'document' AND source_id = ?",
+            (str(document_id),),
+        )
+        remaining_links = conn.execute(
+            """SELECT COUNT(*) FROM links WHERE
+               (source_type = 'document' AND source_id = ?)
+               OR (target_type = 'document' AND target_id = ?)""",
+            (str(document_id), str(document_id)),
+        ).fetchone()[0]
+        remaining_pins = conn.execute(
+            "SELECT COUNT(*) FROM map_pins WHERE source = 'document' AND source_id = ?",
+            (str(document_id),),
+        ).fetchone()[0]
+        print(f"Document delete cleanup: document_id={document_id} remaining_links={remaining_links} remaining_pins={remaining_pins}")
         conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
     return {"deleted": document_id}
 
