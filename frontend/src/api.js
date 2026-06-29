@@ -62,6 +62,12 @@ export async function uploadPhotos(files, relatedTo = "") {
   return r.json();
 }
 
+export async function deletePhoto(id) {
+  const r = await fetch(`${BASE}/api/photos/${id}`, { method: "DELETE" });
+  if (!r.ok) throw new Error("Delete failed");
+  return r.json();
+}
+
 export async function getPins() {
   const r = await fetch(`${BASE}/api/pins`);
   if (!r.ok) throw new Error("Failed to load pins");
@@ -107,6 +113,12 @@ export async function uploadDocuments(files, meta = {}) {
     body: form,
   });
   if (!r.ok) throw new Error("Document upload failed");
+  return r.json();
+}
+
+export async function deleteDocument(id) {
+  const r = await fetch(`${BASE}/api/documents/${id}`, { method: "DELETE" });
+  if (!r.ok) throw new Error("Delete failed");
   return r.json();
 }
 

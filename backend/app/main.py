@@ -586,6 +586,23 @@ async def upload_photos(
     return {"uploaded": len(results), "photos": results}
 
 
+@app.delete("/api/photos/{photo_id}")
+def delete_photo(photo_id: int):
+    with get_connection() as conn:
+        row = conn.execute("SELECT stored_path, thumb_path FROM photos WHERE id = ?", (photo_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Photo not found.")
+        for path_col in (row["stored_path"], row["thumb_path"]):
+            if path_col:
+                p = Path(path_col)
+                if p.exists():
+                    try:
+                        p.unlink()
+                    except Exception:
+                        pass
+        conn.execute("DELETE FROM photos WHERE id = ?", (photo_id,))
+    return {"deleted": photo_id}
+
 
 # ---------------- Documents / Extraction ----------------
 
@@ -699,6 +716,23 @@ def create_document_pin(document_id: int, payload: DocumentPinCreate):
         )
         row = conn.execute("SELECT * FROM map_pins WHERE id = ?", (cur.lastrowid,)).fetchone()
     return row_to_dict(row)
+
+
+@app.delete("/api/documents/{document_id}")
+def delete_document(document_id: int):
+    with get_connection() as conn:
+        row = conn.execute("SELECT stored_path FROM documents WHERE id = ?", (document_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Document not found.")
+        if row["stored_path"]:
+            p = Path(row["stored_path"])
+            if p.exists():
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+        conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
+    return {"deleted": document_id}
 
 
 def _decode_clues(raw: str | None) -> dict:
