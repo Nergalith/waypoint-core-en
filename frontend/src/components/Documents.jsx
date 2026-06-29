@@ -8,7 +8,7 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
 
   // Filter documents linked to currentReportContext. viewAll overrides; null context with no viewAll shows empty.
   const displayedDocs = React.useMemo(() => {
-    const list = documents || [];
+    const list = Array.isArray(documents) ? documents.filter(Boolean) : [];
     if (viewAll) return list;
     if (currentReportContext == null) return [];
     const ctx = String(currentReportContext);
@@ -52,8 +52,8 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
 
   const linksByDoc = useMemo(() => {
     const m = new Map();
-    const lfiById = new Map((lfiList || []).map(l => [String(l.id), l]));
-    (links || []).forEach(lk => {
+    const lfiById = new Map((Array.isArray(lfiList) ? lfiList : []).filter(Boolean).map(l => [String(l.id), l]));
+    (Array.isArray(links) ? links : []).filter(Boolean).forEach(lk => {
       if (lk.source_type === "document") {
         const arr = m.get(String(lk.source_id)) || [];
         if (lk.target_type === "field_report") {
@@ -198,35 +198,36 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
 }
 
 function DocumentCard({ doc, tt, linkedReports = [], onView, onCreatePin, onDelete, isDeleting }) {
-  const clues = doc.clues || {};
-  const coordinates = clues.coordinates || [];
-  const keywords = clues.keywords || [];
-  const dates = clues.dates || [];
-  const places = clues.possible_places || [];
-  const entities = clues.possible_entities || [];
+  const safeDoc = doc || {};
+  const clues = safeDoc.clues || {};
+  const coordinates = Array.isArray(clues.coordinates) ? clues.coordinates.filter(Boolean) : [];
+  const keywords = Array.isArray(clues.keywords) ? clues.keywords.filter(Boolean) : [];
+  const dates = Array.isArray(clues.dates) ? clues.dates.filter(Boolean) : [];
+  const places = Array.isArray(clues.possible_places) ? clues.possible_places.filter(Boolean) : [];
+  const entities = Array.isArray(clues.possible_entities) ? clues.possible_entities.filter(Boolean) : [];
 
   const keywordText = useMemo(() => {
-    return keywords.map((k) => `${keywordLabel(k.group, tt)}: ${(k.matches || []).join(", ")}`).join(" | ");
+    return keywords.map((k) => `${keywordLabel(k.group, tt)}: ${(Array.isArray(k.matches) ? k.matches : []).join(", ")}`).join(" | ");
   }, [keywords, tt]);
 
   return (
-    <div className="doc-card" id={`source-document-${doc.id}`}>
+    <div className="doc-card" id={`source-document-${safeDoc.id || "unknown"}`}>
       <div className="doc-card-head">
         <div>
-          <strong>{doc.original_filename}</strong>
-          <div className="doc-meta">{(doc.file_type || tt("docs.file_type_fallback")).toUpperCase()} | {doc.uploaded_at}</div>
+          <strong>{safeDoc.original_filename || safeDoc.filename || "Unnamed"}</strong>
+          <div className="doc-meta">{String(safeDoc.file_type || tt("docs.file_type_fallback")).toUpperCase()} | {safeDoc.uploaded_at || ""}</div>
         </div>
-        <span className={`extract-status status-${doc.extraction_status}`}>{tt(`docs.status.${doc.extraction_status}`)}</span>
+        <span className={`extract-status status-${safeDoc.extraction_status || "unknown"}`}>{tt(`docs.status.${safeDoc.extraction_status || "unknown"}`)}</span>
       </div>
 
-      {doc.extraction_status === 'error' && doc.extraction_detail && <div className="tooltip">{doc.extraction_detail}</div>}
-      {doc.notes && <div className="doc-note">{tt("docs.notes")}: {doc.notes}</div>}
-      {doc.related_to && <div className="doc-note">{tt("common.linked", {note: doc.related_to})}</div>}
+      {safeDoc.extraction_status === 'error' && safeDoc.extraction_detail && <div className="tooltip">{safeDoc.extraction_detail}</div>}
+      {safeDoc.notes && <div className="doc-note">{tt("docs.notes")}: {safeDoc.notes}</div>}
+      {safeDoc.related_to && <div className="doc-note">{tt("common.linked", {note: safeDoc.related_to})}</div>}
       <div className="doc-note" style={{fontSize:11, color: linkedReports.length ? "var(--accent)" : "var(--muted)"}}>
         {linkedReports.length > 0 ? tt("docs.linked_reports", { reports: linkedReports.join(", ") }) : tt("docs.not_linked_report")}
       </div>
 
-      <div className="doc-preview">{doc.text_preview || tt("docs.no_text")}</div>
+      <div className="doc-preview">{safeDoc.text_preview || safeDoc.extracted_text?.substring(0, 220) || tt("docs.no_text")}</div>
 
       <div className="clue-grid">
         {dates.length > 0 && <ClueBlock label={tt("docs.clue_dates")} value={dates.join(", ")} />}

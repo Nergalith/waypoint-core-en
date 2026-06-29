@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { Component, useEffect, useState, useCallback } from "react";
 import LFIForm from "./components/LFIForm.jsx";
 import PhotoIngest from "./components/PhotoIngest.jsx";
 import MapView from "./components/MapView.jsx";
@@ -9,6 +9,41 @@ import FieldObjects from "./components/FieldObjects.jsx";
 import Reference from "./components/Reference.jsx";
 import { getDocuments, getFieldObjects, getLfi, getLinks, getPhotos, getPins, getStorageSize, health } from "./api";
 import { DEFAULT_LANG, t } from "./i18n";
+
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error("Tab render error:", error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="card tab-error" role="alert">
+          <h3>{this.props.title || "Tab failed to load"}</h3>
+          <p>Try clicking Refresh. If the problem continues, restart Waypoint.</p>
+          <button
+            type="button"
+            className="small-action"
+            onClick={() => this.setState({ hasError: false, error: null })}
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const BLANK_LFI_FORM = {
   report_type: "Observation",
@@ -184,6 +219,7 @@ export default function App() {
         </div>
 
         {active === "lfi" && (
+          <ErrorBoundary key="lfi" title="Field Reports failed to load">
           <LFIForm
             lang={lang}
             onSaved={refreshAll}
@@ -201,9 +237,11 @@ export default function App() {
             onStartNewReport={startNewReport}
             onReportContextChange={setCurrentReportContext}
           />
+          </ErrorBoundary>
         )}
 
         {active === "photos" && (
+          <ErrorBoundary key="photos" title="Photos failed to load">
           <PhotoIngest
             lang={lang}
             onUploaded={refreshAll}
@@ -213,9 +251,11 @@ export default function App() {
             currentReportContext={currentReportContext}
             focusedId={sourceFocus?.source === "photo" ? sourceFocus : null}
           />
+          </ErrorBoundary>
         )}
 
         {active === "map" && (
+          <ErrorBoundary key="map" title="Map failed to load">
           <MapView
             lang={lang}
             lfiList={lfiList}
@@ -231,9 +271,11 @@ export default function App() {
             }}
             onOpenSource={openSource}
           />
+          </ErrorBoundary>
         )}
 
         {active === "documents" && (
+          <ErrorBoundary key="documents" title="Documents failed to load">
           <Documents
             lang={lang}
             documents={documentList}
@@ -244,9 +286,11 @@ export default function App() {
             onPinCreated={refreshAll}
             focusedId={sourceFocus?.source === "document" ? sourceFocus : null}
           />
+          </ErrorBoundary>
         )}
 
         {active === "objects" && (
+          <ErrorBoundary key="objects" title="Field Objects failed to load">
           <FieldObjects
             lang={lang}
             objects={objectList}
@@ -262,9 +306,11 @@ export default function App() {
               setActive("map");
             }}
           />
+          </ErrorBoundary>
         )}
 
         {active === "connections" && (
+          <ErrorBoundary key="connections" title="Connections failed to load">
           <Connections
             lang={lang}
             links={linkList}
@@ -280,9 +326,11 @@ export default function App() {
               setActive("map");
             }}
           />
+          </ErrorBoundary>
         )}
 
         {active === "chronologie" && (
+          <ErrorBoundary key="chronologie" title="Timeline failed to load">
           <Chronologie
             lang={lang}
             lfiList={lfiList}
@@ -290,9 +338,14 @@ export default function App() {
             documentList={documentList}
             objectList={objectList}
           />
+          </ErrorBoundary>
         )}
 
-        {active === "reference" && <Reference />}
+        {active === "reference" && (
+          <ErrorBoundary key="reference" title="Reference failed to load">
+            <Reference />
+          </ErrorBoundary>
+        )}
 
         {/* Always show a tiny combined status bar when not on map */}
         {active !== "map" && active !== "chronologie" && (
