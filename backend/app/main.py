@@ -242,6 +242,28 @@ def list_lfi(limit: int = 100):
     return rows_to_dicts(rows)
 
 
+@app.get("/api/lfi/{lfi_id}/photos")
+def get_lfi_photos(lfi_id: int):
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT id, original_filename, stored_path, thumb_path, latitude, longitude,
+                      datetime_original, imported_from, created_at
+               FROM photos
+               WHERE (source_type = 'field_report' AND source_id = ?)
+                  OR id IN (
+                    SELECT CAST(source_id AS INTEGER) FROM links
+                    WHERE source_type = 'photo' AND target_type = 'field_report' AND target_id = ?
+                  )
+                  OR id IN (
+                    SELECT CAST(target_id AS INTEGER) FROM links
+                    WHERE target_type = 'photo' AND source_type = 'field_report' AND source_id = ?
+                  )
+               ORDER BY created_at ASC""",
+            (str(lfi_id), str(lfi_id), str(lfi_id)),
+        ).fetchall()
+    return rows_to_dicts(rows)
+
+
 @app.post("/api/lfi", status_code=201)
 def create_lfi(payload: LfiCreate):
     now = utc_now_iso()

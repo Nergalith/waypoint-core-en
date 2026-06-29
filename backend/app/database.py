@@ -164,8 +164,15 @@ def init_db() -> None:
             "pin_color": "TEXT NOT NULL DEFAULT '#eab308'",
             "report_number": "TEXT",
             "last_edited_at": "TEXT",
+            "imported_from": "TEXT",
+            "fn_report_id": "TEXT",
         })
-        _ensure_columns(conn, "photos", {"related_to": "TEXT NOT NULL DEFAULT ''"})
+        _ensure_columns(conn, "photos", {
+            "related_to": "TEXT NOT NULL DEFAULT ''",
+            "source_type": "TEXT",
+            "source_id": "TEXT",
+            "imported_from": "TEXT",
+        })
         _ensure_columns(conn, "map_pins", {"category": "TEXT NOT NULL DEFAULT 'general'"})
         _ensure_columns(conn, "field_objects", {
             "pin_color": "TEXT NOT NULL DEFAULT '#eab308'",

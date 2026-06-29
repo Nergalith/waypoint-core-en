@@ -6,6 +6,12 @@ export async function getLfi() {
   return r.json();
 }
 
+export async function getLfiPhotos(id) {
+  const r = await fetch(`${BASE}/api/lfi/${id}/photos`);
+  if (!r.ok) throw new Error("Failed to load report photos");
+  return r.json();
+}
+
 export async function finalizeLfi(id, lang = "en") {
   const r = await fetch(`${BASE}/api/lfi/${id}/finalize?lang=${encodeURIComponent(lang)}`, { method: "PATCH" });
   if (!r.ok) throw new Error("Failed to finalize report");
@@ -205,6 +211,15 @@ export async function importAar(file) {
   const form = new FormData();
   form.append("file", file);
   const r = await fetch(`${BASE}/api/imports/aar`, { method: "POST", body: form });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || "Import failed");
+  return data;
+}
+
+export async function importBundle(file) {
+  const form = new FormData();
+  form.append("file", file);
+  const r = await fetch(`${BASE}/api/imports/bundle`, { method: "POST", body: form });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.detail || "Import failed");
   return data;

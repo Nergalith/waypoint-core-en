@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
-import { createLfi, deleteLfi, downloadReportUrl, exportLfi, finalizeLfi, reopenLfi, updateLfi } from "../api";
+import ImportBundle from "./ImportBundle.jsx";
+import { createLfi, deleteLfi, downloadReportUrl, exportLfi, finalizeLfi, getLfiPhotos, photoUrl, reopenLfi, thumbUrl, updateLfi } from "../api";
 import { t, translateReportType } from "../i18n";
 import { PIN_CATEGORIES, STATUS_COLORS } from "../pinConstants";
 
@@ -113,6 +114,8 @@ export default function LFIForm({
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [generating, setGenerating] = useState(false);
   const [downloadFile, setDownloadFile] = useState(null);
+  const [reportPhotos, setReportPhotos] = useState([]);
+  const [reportPhotosStatus, setReportPhotosStatus] = useState("");
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -173,6 +176,31 @@ export default function LFIForm({
     const timer = setTimeout(() => element.classList.remove("source-highlight"), 2800);
     return () => clearTimeout(timer);
   }, [focusedId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadReportPhotos() {
+      if (!editingId) {
+        setReportPhotos([]);
+        setReportPhotosStatus("");
+        return;
+      }
+      try {
+        const photos = await getLfiPhotos(editingId);
+        if (!cancelled) {
+          setReportPhotos(Array.isArray(photos) ? photos : []);
+          setReportPhotosStatus("");
+        }
+      } catch {
+        if (!cancelled) {
+          setReportPhotos([]);
+          setReportPhotosStatus("Attached photos could not be loaded.");
+        }
+      }
+    }
+    loadReportPhotos();
+    return () => { cancelled = true; };
+  }, [editingId]);
 
   async function handleFinalize(id) {
     if (lockingId) return;
@@ -357,7 +385,7 @@ export default function LFIForm({
         {tt("lfi.intro")}
       </p>
 
-      <div style={{ marginBottom: 10 }}>
+      <div className="tab-toolbar">
         <button
           type="button"
           className="small-action new-report-action"
@@ -374,6 +402,13 @@ export default function LFIForm({
         >
           + New Report
         </button>
+        <ImportBundle
+          onImportComplete={async () => {
+            if (onSaved) await onSaved();
+            setStatus("Import complete. Review the draft report below.");
+            setTimeout(() => setStatus(""), 5200);
+          }}
+        />
       </div>
 
       {editingId && (
@@ -386,6 +421,32 @@ export default function LFIForm({
           <button type="button" className="small-action" onClick={cancelEdit} style={{ fontSize: 11 }}>
             {tt("lfi.cancel_edit")}
           </button>
+        </div>
+      )}
+
+      {editingId && (reportPhotos.length > 0 || reportPhotosStatus) && (
+        <div className="report-photos">
+          <label>Attached Photos ({reportPhotos.length})</label>
+          {reportPhotosStatus && <div className="tooltip">{reportPhotosStatus}</div>}
+          {reportPhotos.length > 0 && (
+            <div className="photo-strip">
+              {reportPhotos.map((photo) => {
+                const storedName = photo.stored_path?.split(/[\\/]/).pop();
+                const src = thumbUrl(photo.thumb_path) || (storedName ? photoUrl(storedName) : null);
+                return src ? (
+                  <button
+                    type="button"
+                    key={photo.id}
+                    className="photo-thumb-button"
+                    title={photo.original_filename || "Attached photo"}
+                    onClick={() => window.open(photoUrl(storedName || photo.original_filename), "_blank", "noopener,noreferrer")}
+                  >
+                    <img src={src} alt={photo.original_filename || "Attached photo"} />
+                  </button>
+                ) : null;
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -609,6 +670,9 @@ export default function LFIForm({
                   }}>
                     LOCKED {tt("lfi.status.finalized")}
                   </span>
+                )}
+                {l.imported_from === "FIELD_NODE" && (
+                  <span className="badge badge-imported">FIELD NODE</span>
                 )}
                 <span style={{ flex: 1 }}>
                   <strong>{l.report_number || `RPT-${l.id}`}</strong> - {translateReportType(l.report_type, tt)} - {l.what_happened?.slice(0, 70) || l.who_involved?.slice(0, 50) || tt("lfi.no_detail")}
