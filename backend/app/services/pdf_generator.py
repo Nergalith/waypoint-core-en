@@ -20,7 +20,7 @@ import json
 import logging
 from io import BytesIO
 try:
-    from PIL import Image as PILImage, ImageDraw, ImageFont
+    from PIL import Image as PILImage, ImageDraw, ImageFont, ImageOps
     _HAS_RENDER_DEPS = True
 except Exception:
     _HAS_RENDER_DEPS = False
@@ -277,6 +277,23 @@ def _render_static_map(points: list[tuple[float, float, str]], width: int = 320,
     return bio.getvalue()
 
 
+def _photo_flowable(path: str | Path, width: float):
+    if not _HAS_RENDER_DEPS:
+        return None
+    image_path = Path(path)
+    if not image_path.exists():
+        return None
+    try:
+        with PILImage.open(image_path) as img:
+            img = ImageOps.exif_transpose(img)
+            out = BytesIO()
+            img.convert("RGB").save(out, format="JPEG", quality=85, optimize=True)
+            out.seek(0)
+            return Image(out, width=width)
+    except Exception as exc:
+        logger.warning("PDF photo orientation/render failed for %s: %s", image_path, exc)
+        return None
+
 # ---------------------------------------------------------------------------
 # Story builder
 # ---------------------------------------------------------------------------
@@ -376,18 +393,16 @@ def _report_story(
         story.append(Paragraph(lbl["linked_photos"], styles["label"]))
         story.append(Spacer(1, 2 * mm))
         for ph in photos:
-            thumb = ph.get("thumb_path")
-            if thumb and Path(thumb).exists():
-                try:
-                    story.append(Image(str(thumb), width=40 * mm))
-                    fname = ph.get("original_filename", "")
-                    gps   = ""
-                    if ph.get("latitude") and ph.get("longitude"):
-                        gps = f"  {ph['latitude']:.4f}, {ph['longitude']:.4f}"
-                    story.append(Paragraph(f"{fname}{gps}", styles["small"]))
-                    story.append(Spacer(1, 2 * mm))
-                except Exception:
-                    pass
+            image_path = ph.get("thumb_path") or ph.get("stored_path")
+            flowable = _photo_flowable(image_path, width=40 * mm) if image_path else None
+            if flowable:
+                fname = ph.get("original_filename", "")
+                gps = ""
+                if ph.get("latitude") and ph.get("longitude"):
+                    gps = f"  {ph['latitude']:.4f}, {ph['longitude']:.4f}"
+                story.append(flowable)
+                story.append(Paragraph(f"{fname}{gps}", styles["small"]))
+                story.append(Spacer(1, 2 * mm))
 
     return story
 

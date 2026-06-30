@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from PIL import Image, ExifTags
+from PIL import Image, ImageOps
 
 logger = logging.getLogger(__name__)
 
@@ -83,10 +83,11 @@ def extract_photo_metadata(path: Path) -> Dict[str, Any]:
 
     try:
         with Image.open(p) as img:
-            result["width"] = img.width
-            result["height"] = img.height
-
             exif = img.getexif() or {}
+            oriented = ImageOps.exif_transpose(img)
+            result["width"] = oriented.width
+            result["height"] = oriented.height
+
             if not exif:
                 result["precision_note"] = "No EXIF data"
             else:
@@ -125,7 +126,7 @@ def extract_photo_metadata(path: Path) -> Dict[str, Any]:
 
             # Always generate a thumbnail for UI (small JPEG)
             try:
-                thumb = img.copy()
+                thumb = oriented.copy()
                 thumb.thumbnail(THUMB_SIZE, Image.LANCZOS)
                 thumb_path = p.parent / "thumbs" / f"{p.stem}_thumb.jpg"
                 thumb_path.parent.mkdir(parents=True, exist_ok=True)
@@ -150,6 +151,7 @@ def compress_for_storage(path: Path, max_width: int = 1024, quality: int = 75) -
     """Resize image to max_width and re-encode as JPEG in-place. Called after EXIF extraction."""
     try:
         with Image.open(path) as img:
+            img = ImageOps.exif_transpose(img)
             w, h = img.size
             if w > max_width:
                 new_h = int(h * max_width / w)
