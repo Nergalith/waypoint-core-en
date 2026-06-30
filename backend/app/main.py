@@ -247,7 +247,7 @@ def get_lfi_photos(lfi_id: int):
     with get_connection() as conn:
         rows = conn.execute(
             """SELECT id, original_filename, stored_path, thumb_path, latitude, longitude,
-                      datetime_original, imported_from, created_at
+                      datetime_original, imported_from, caption, created_at
                FROM photos
                WHERE (source_type = 'field_report' AND source_id = ?)
                   OR id IN (

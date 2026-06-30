@@ -433,15 +433,17 @@ export default function LFIForm({
               {reportPhotos.map((photo) => {
                 const storedName = photo.stored_path?.split(/[\\/]/).pop();
                 const src = thumbUrl(photo.thumb_path) || (storedName ? photoUrl(storedName) : null);
+                const caption = photo.caption || photo.original_filename || "Attached photo";
                 return src ? (
                   <button
                     type="button"
                     key={photo.id}
                     className="photo-thumb-button"
-                    title={photo.original_filename || "Attached photo"}
+                    title={caption}
                     onClick={() => window.open(photoUrl(storedName || photo.original_filename), "_blank", "noopener,noreferrer")}
                   >
-                    <img src={src} alt={photo.original_filename || "Attached photo"} />
+                    <img src={src} alt={caption} />
+                    <span>{caption}</span>
                   </button>
                 ) : null;
               })}

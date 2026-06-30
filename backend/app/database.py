@@ -172,6 +172,7 @@ def init_db() -> None:
             "source_type": "TEXT",
             "source_id": "TEXT",
             "imported_from": "TEXT",
+            "caption": "TEXT NOT NULL DEFAULT ''",
         })
         _ensure_columns(conn, "map_pins", {"category": "TEXT NOT NULL DEFAULT 'general'"})
         _ensure_columns(conn, "field_objects", {

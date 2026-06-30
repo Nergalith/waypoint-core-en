@@ -126,7 +126,7 @@ async def _ingest_field_node(zf: zipfile.ZipFile, manifest: dict[str, Any], file
         reliability = "F"
     notes = str(report_data.get("notes") or "").strip()
     salute = report_data.get("salute") if isinstance(report_data.get("salute"), dict) else {}
-    photo_filenames = report_data.get("photos") if isinstance(report_data.get("photos"), list) else []
+    photo_entries = _normalize_photo_entries(report_data)
 
     full_notes = _build_notes(notes, salute, fn_report_id, filename)
     who_involved = f"Observer: {observer}" if observer else ""
@@ -177,8 +177,8 @@ async def _ingest_field_node(zf: zipfile.ZipFile, manifest: dict[str, Any], file
                 )
                 pin_id = pin_cur.lastrowid
 
-            for photo_name in photo_filenames:
-                photo_result = _save_field_node_photo(conn, zf, str(photo_name), lfi_id, report_number, timestamp_str or now)
+            for photo_entry in photo_entries:
+                photo_result = _save_field_node_photo(conn, zf, photo_entry["filename"], lfi_id, report_number, timestamp_str or now, photo_entry.get("caption", ""))
                 if photo_result:
                     saved_photos.append(photo_result)
 
@@ -235,7 +235,7 @@ def _save_tracks(tracks: list[dict[str, Any]], filename: str) -> dict[str, Any] 
     }
 
 
-def _save_field_node_photo(conn, zf: zipfile.ZipFile, photo_filename: str, lfi_id: int, report_number: str, timestamp: str) -> dict[str, Any] | None:
+def _save_field_node_photo(conn, zf: zipfile.ZipFile, photo_filename: str, lfi_id: int, report_number: str, timestamp: str, caption: str = "") -> dict[str, Any] | None:
     member = _find_zip_member(zf, photo_filename)
     if not member:
         logger.warning("Photo %s listed in Field Node report but not found in ZIP", photo_filename)
@@ -257,8 +257,8 @@ def _save_field_node_photo(conn, zf: zipfile.ZipFile, photo_filename: str, lfi_i
             """
             INSERT INTO photos
             (original_filename, stored_path, thumb_path, latitude, longitude, datetime_original,
-             file_size, width, height, related_to, source_type, source_id, imported_from, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'field_report', ?, 'FIELD_NODE', ?)
+             file_size, width, height, related_to, source_type, source_id, imported_from, caption, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'field_report', ?, 'FIELD_NODE', ?, ?)
             """,
             (
                 safe_name,
@@ -272,6 +272,7 @@ def _save_field_node_photo(conn, zf: zipfile.ZipFile, photo_filename: str, lfi_i
                 meta.get("height"),
                 report_number,
                 str(lfi_id),
+                str(caption or "").strip(),
                 timestamp,
             ),
         )
@@ -284,7 +285,7 @@ def _save_field_node_photo(conn, zf: zipfile.ZipFile, photo_filename: str, lfi_i
             """,
             (str(photo_id), safe_name, str(lfi_id), report_number, utc_now_iso()),
         )
-        return {"filename": safe_name, "photo_id": photo_id, "thumb_path": meta.get("thumb_path")}
+        return {"filename": safe_name, "photo_id": photo_id, "thumb_path": meta.get("thumb_path"), "caption": str(caption or "").strip()}
     except Exception as exc:
         logger.exception("Photo save failed for %s", photo_filename)
         try:
@@ -294,6 +295,35 @@ def _save_field_node_photo(conn, zf: zipfile.ZipFile, photo_filename: str, lfi_i
             pass
         return None
 
+
+
+def _normalize_photo_entries(report_data: dict[str, Any]) -> list[dict[str, str]]:
+    raw_photos = report_data.get("photos") if isinstance(report_data.get("photos"), list) else []
+    caption_maps = []
+    for key in ("photo_captions", "captions", "photo_notes"):
+        value = report_data.get(key)
+        if isinstance(value, dict):
+            caption_maps.append({str(k): str(v) for k, v in value.items()})
+
+    entries: list[dict[str, str]] = []
+    for item in raw_photos:
+        filename = ""
+        caption = ""
+        if isinstance(item, str):
+            filename = item
+        elif isinstance(item, dict):
+            filename = str(item.get("filename") or item.get("name") or item.get("file") or item.get("path") or "")
+            caption = str(item.get("caption") or item.get("notes") or item.get("description") or item.get("title") or "")
+        filename = Path(filename).name.strip()
+        if not filename:
+            continue
+        if not caption:
+            for caption_map in caption_maps:
+                caption = caption_map.get(filename) or caption_map.get(Path(filename).name) or ""
+                if caption:
+                    break
+        entries.append({"filename": filename, "caption": caption.strip()})
+    return entries
 
 def parse_zip(content: bytes) -> list[dict]:
     tracks = []

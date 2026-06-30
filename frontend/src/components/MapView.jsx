@@ -18,13 +18,19 @@ const DEFAULT_LAYER_VISIBILITY = {
 };
 const CHUNK_SIZE = 120;
 const DEV_MAP_LOG = import.meta.env?.DEV;
-const CALLSIGN_COLORS = {
-  ALPHA: "#00BFFF",
-  BRAVO: "#FF6B35",
-  CHARLIE: "#7CFC00",
-  DELTA: "#FFD700",
-  ECHO: "#FF69B4",
-};
+const TRACK_COLOR_STORAGE_KEY = "waypoint-track-callsign-colors";
+const TRACK_COLOR_PALETTE = [
+  "#42c8ff",
+  "#ff6b35",
+  "#29d37d",
+  "#f6a43a",
+  "#d946ef",
+  "#38bdf8",
+  "#f43f5e",
+  "#a3e635",
+  "#facc15",
+  "#818cf8",
+];
 
 export default function MapView({ lang = "en", lfiList, photoList, documentList, objectList = [], pinList, focusCoordinates, refreshAll, onUseCoordinates, onOpenSource }) {
   const tt = (key, vars = {}) => t(key, lang, vars);
@@ -33,6 +39,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   const leafletMap = useRef(null);
   const layersRef = useRef({ pins: null, country: null, prefectures: null, roads: null, rivers: null, places: null, borders: null, tracks: null });
   const trackLayersRef = useRef({});
+  const callsignColorsRef = useRef(loadStoredCallsignColors());
   const layerVisibilityRef = useRef(DEFAULT_LAYER_VISIBILITY);
   const packageBoundsRef = useRef(null);
   const pickCoordsModeRef = useRef(false);
@@ -47,6 +54,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   const [pinSaving, setPinSaving] = useState(false);
   const [tracks, setTracks] = useState([]);
   const [trackVisibility, setTrackVisibility] = useState({});
+  const [callsignColors, setCallsignColors] = useState(callsignColorsRef.current);
   const [showAarImport, setShowAarImport] = useState(false);
 
   useEffect(() => {
@@ -61,6 +69,10 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   useEffect(() => {
     applyLayerVisibility();
   }, [trackVisibility]);
+
+  useEffect(() => {
+    if (leafletMap.current) renderTracks(tracks, leafletMap.current, callsignColors);
+  }, [callsignColors]);
 
   const allGeoItems = React.useMemo(() => {
     const items = [];
@@ -197,13 +209,14 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     try {
       const loaded = await getTracks();
       setTracks(loaded);
-      renderTracks(loaded, map);
+      const colors = ensureCallsignColors(loaded);
+      renderTracks(loaded, map, colors);
     } catch (err) {
       mapLog("tracks load failed", err);
     }
   }
 
-  function renderTracks(trackList, map = leafletMap.current) {
+  function renderTracks(trackList, map = leafletMap.current, colorMap = callsignColorsRef.current) {
     if (!map || !layersRef.current.tracks) return;
     layersRef.current.tracks.clearLayers();
     trackLayersRef.current = {};
@@ -215,7 +228,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       const coords = track.geojson?.coordinates || [];
       const latlngs = coords.map((coord) => [coord[1], coord[0]]).filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon));
       if (latlngs.length < 2) return;
-      L.polyline(latlngs, { color: getCallsignColor(callsign), weight: 2.5, opacity: 0.9 })
+      L.polyline(latlngs, { color: getCallsignColor(callsign, colorMap), weight: 2.5, opacity: 0.9 })
         .bindPopup(`<b>${escapeHtml(callsign)}</b><br/>${escapeHtml(track.filename || "AAR import")}<br/>${escapeHtml(track.timestamp || "")}<br/>${Number(track.point_count || latlngs.length)} points`)
         .addTo(trackLayersRef.current[callsign]);
     });
@@ -223,6 +236,38 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     Object.keys(trackLayersRef.current).forEach((callsign) => { nextVisibility[callsign] = trackVisibility[callsign] !== false; });
     setTrackVisibility(nextVisibility);
     applyLayerVisibility(map);
+  }
+
+
+  function ensureCallsignColors(trackList) {
+    const next = { ...callsignColorsRef.current };
+    const used = new Set(Object.values(next).map((value) => String(value).toLowerCase()));
+    let changed = false;
+
+    (trackList || []).forEach((track) => {
+      const callsign = String(track.callsign || "UNKNOWN").toUpperCase();
+      if (next[callsign]) return;
+      const paletteColor = TRACK_COLOR_PALETTE.find((color) => !used.has(color.toLowerCase()));
+      const assigned = paletteColor || fallbackCallsignColor(callsign);
+      next[callsign] = assigned;
+      used.add(assigned.toLowerCase());
+      changed = true;
+    });
+
+    if (changed) saveCallsignColors(next);
+    return next;
+  }
+
+  function saveCallsignColors(next) {
+    callsignColorsRef.current = next;
+    setCallsignColors(next);
+    try {
+      localStorage.setItem(TRACK_COLOR_STORAGE_KEY, JSON.stringify(next));
+    } catch {}
+  }
+
+  function setManualCallsignColor(callsign, color) {
+    saveCallsignColors({ ...callsignColorsRef.current, [callsign]: color });
   }
 
   async function handleAarFile(file) {
@@ -543,13 +588,20 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
           </label>
         ))}
         {Object.keys(trackLayersRef.current).map((callsign) => (
-          <label key={callsign}>
+          <label key={callsign} className="track-callsign-control">
             <input
               type="checkbox"
               checked={trackVisibility[callsign] !== false}
               onChange={() => setTrackVisibility((current) => ({ ...current, [callsign]: current[callsign] === false }))}
             />
-            {callsign}
+            <span>{callsign}</span>
+            <input
+              type="color"
+              value={getCallsignColor(callsign, callsignColors)}
+              title={`Track color for ${callsign}`}
+              onChange={(event) => setManualCallsignColor(callsign, event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+            />
           </label>
         ))}
       </div>
@@ -697,8 +749,20 @@ function addMbtilesBaseLayer(map) {
   layer.addTo(map);
 }
 
-function getCallsignColor(callsign) {
-  if (CALLSIGN_COLORS[callsign]) return CALLSIGN_COLORS[callsign];
+function loadStoredCallsignColors() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TRACK_COLOR_STORAGE_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function getCallsignColor(callsign, colorMap = {}) {
+  return colorMap[callsign] || fallbackCallsignColor(callsign);
+}
+
+function fallbackCallsignColor(callsign) {
   let hash = 0;
   for (let i = 0; i < callsign.length; i += 1) {
     hash = callsign.charCodeAt(i) + ((hash << 5) - hash);
