@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import ImportBundle from "./ImportBundle.jsx";
 import { createLfi, deleteLfi, downloadReportUrl, exportLfi, finalizeLfi, getLfiPhotos, photoUrl, reopenLfi, thumbUrl, updateLfi } from "../api";
 import { t, translateReportType } from "../i18n";
@@ -111,6 +111,7 @@ export default function LFIForm({
   const [saving, setSaving] = useState(false);
   const [lockingId, setLockingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [generating, setGenerating] = useState(false);
@@ -296,14 +297,15 @@ export default function LFIForm({
     setSelectedIds(new Set());
   }
 
-  async function handleExport() {
+  async function handleExport(sections) {
     if (selectedIds.size === 0 || generating) return;
     setGenerating(true);
     setDownloadFile(null);
     try {
-      const result = await exportLfi(Array.from(selectedIds), lang);
+      const result = await exportLfi(Array.from(selectedIds), lang, sections);
       setStatus(tt("lfi.report_generated", { filename: result.filename }));
       setDownloadFile(result.filename);
+      setShowExportModal(false);
       exitSelectMode();
       setTimeout(() => { setStatus(""); setDownloadFile(null); }, 30000);
     } catch {
@@ -595,11 +597,20 @@ export default function LFIForm({
             download={downloadFile}
             style={{ color: "var(--accent)", fontSize: 13, textDecoration: "underline" }}
           >
-            ⬇ {tt("lfi.download_btn")}
+            {tt("lfi.download_btn")}
           </a>
         </div>
       )}
 
+
+      {showExportModal && (
+        <ExportModal
+          selectedCount={selectedIds.size}
+          generating={generating}
+          onGenerate={handleExport}
+          onCancel={() => setShowExportModal(false)}
+        />
+      )}
       <div style={{ marginTop: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
           <strong>{tt("lfi.recent_title")}</strong>
@@ -608,7 +619,7 @@ export default function LFIForm({
               <>
                 <button
                   className="small-action"
-                  onClick={handleExport}
+                  onClick={() => setShowExportModal(true)}
                   disabled={selectedIds.size === 0 || generating}
                   style={{ fontSize: 11, background: "rgba(234,179,8,0.15)", borderColor: "#eab308" }}
                 >
@@ -749,4 +760,46 @@ function reliability_color(code) {
   const m = { A: "#16a34a", B: "#84cc16", C: "#eab308", D: "#f97316", E: "#ef4444", F: "#6b7280" };
   return m[(code || "F").toUpperCase()] || "#6b7280";
 }
+function ExportModal({ selectedCount, generating, onGenerate, onCancel }) {
+  const [sections, setSections] = useState({
+    cover: true,
+    map: true,
+    reports: true,
+    photos: false,
+  });
+  const hasSelection = Object.values(sections).some(Boolean);
+  const updateSection = (key, checked) => setSections((current) => ({ ...current, [key]: checked }));
 
+  return (
+    <div className="modal-backdrop export-modal-backdrop" role="dialog" aria-modal="true" aria-label="Generate Report">
+      <div className="modal-card export-modal">
+        <h3>Generate Report</h3>
+        <p className="export-modal-intro">Choose what to include in this PDF.</p>
+        <div className="export-options">
+          <label>
+            <input type="checkbox" checked={sections.cover} onChange={(e) => updateSection("cover", e.target.checked)} />
+            Cover page
+          </label>
+          <label>
+            <input type="checkbox" checked={sections.map} onChange={(e) => updateSection("map", e.target.checked)} />
+            Map (patrol tracks + report pins)
+          </label>
+          <label>
+            <input type="checkbox" checked={sections.reports} onChange={(e) => updateSection("reports", e.target.checked)} />
+            Field Reports ({selectedCount} selected)
+          </label>
+          <label>
+            <input type="checkbox" checked={sections.photos} onChange={(e) => updateSection("photos", e.target.checked)} />
+            Photos gallery (all linked photos)
+          </label>
+        </div>
+        <div className="export-actions">
+          <button type="button" className="small-action" onClick={onCancel} disabled={generating}>Cancel</button>
+          <button type="button" className="small-action btn-primary" onClick={() => onGenerate(sections)} disabled={generating || !hasSelection}>
+            {generating ? "..." : "Generate PDF"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

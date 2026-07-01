@@ -1117,3 +1117,46 @@ footer {
     grid-column: 1 / -1;
   }
 }
+.export-modal {
+  width: min(480px, 96vw);
+}
+
+.export-modal h3 {
+  margin: 0 0 6px;
+}
+
+.export-modal-intro {
+  margin: 0 0 12px;
+  color: var(--soft);
+  font-size: 13px;
+}
+
+.export-options {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 16px;
+}
+
+.export-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card-strong);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.export-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: rgba(234,179,8,0.18);
+  border-color: #eab308;
+  color: var(--text);
+}

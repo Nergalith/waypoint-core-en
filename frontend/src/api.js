@@ -1,4 +1,4 @@
-﻿const BASE = "http://127.0.0.1:8000";
+const BASE = "http://127.0.0.1:8000";
 
 export async function getLfi() {
   const r = await fetch(`${BASE}/api/lfi`);
@@ -170,11 +170,11 @@ export async function createFieldObject(payload) {
   return r.json();
 }
 
-export async function exportLfi(ids, lang = "en") {
+export async function exportLfi(ids, lang = "en", sections = null) {
   const r = await fetch(`${BASE}/api/lfi/export`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ids, lang }),
+    body: JSON.stringify({ ids, lang, sections }),
   });
   if (!r.ok) throw new Error("Export failed");
   return r.json();
@@ -241,5 +241,3 @@ export function thumbUrl(thumbPath) {
   const name = thumbPath.split(/[\\/]/).pop();
   return `${BASE}/photos/thumbs/${encodeURIComponent(name)}`;
 }
-
-

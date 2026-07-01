@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 class LfiExportRequest(BaseModel):
     ids: List[int]
     lang: str = "en"
+    sections: Optional[Dict[str, bool]] = None
 
 
 class LfiCreate(BaseModel):
@@ -507,6 +508,7 @@ def export_lfi(payload: LfiExportRequest):
 
         photos_by_id: Dict[int, list] = {}
         links_by_id: Dict[int, list] = {}
+        tracks = rows_to_dicts(conn.execute("SELECT * FROM patrol_tracks ORDER BY import_timestamp ASC").fetchall())
         for report in reports:
             rid = report["id"]
             link_rows = conn.execute(
@@ -534,7 +536,7 @@ def export_lfi(payload: LfiExportRequest):
             else:
                 photos_by_id[rid] = []
 
-    pdf_path = generate_bundle_pdf(reports, photos_by_id, links_by_id, lang=payload.lang)
+    pdf_path = generate_bundle_pdf(reports, photos_by_id, links_by_id, lang=payload.lang, sections=payload.sections, tracks=tracks)
     return {"path": str(pdf_path), "filename": pdf_path.name}
 
 
@@ -1023,7 +1025,3 @@ def dev_clear_all():
         conn.execute("DELETE FROM links")
         conn.execute("DELETE FROM field_objects")
     return {"status": "cleared (db rows only)"}
-
-
-
-

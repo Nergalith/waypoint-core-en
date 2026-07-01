@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import os
 from datetime import datetime
@@ -193,30 +193,43 @@ def _build_doc(path: Path) -> SimpleDocTemplate:
 # For bundles, pass multiple points to show all on one map.
 # ---------------------------------------------------------------------------
 
-def _render_static_map(points: list[tuple[float, float, str]], width: int = 320, height: int = 180) -> bytes | None:
-    """Return PNG bytes for a simple test-map outline + labeled pin(s). points = [(lat, lon, label), ...].
-    Completely offline. Linear scale is sufficient for the small offline test package.
-    """
-    if not _HAS_RENDER_DEPS or not points:
+def _render_static_map(points: list[tuple[float, float, str]], tracks: list | None = None, width: int = 640, height: int = 360) -> bytes | None:
+    """Return PNG bytes for an offline overview map with report pins and patrol tracks."""
+    if not _HAS_RENDER_DEPS:
         return None
 
+    points = points or []
+    tracks = tracks or []
+    boundary: list[tuple[float, float]] = []
     map_path = ROOT_DIR / "frontend" / "public" / "maps" / "test" / "admin0.geojson"
-    if not map_path.exists():
-        return None
 
-    try:
-        with open(map_path, "r", encoding="utf-8-sig") as f:
-            gj = json.load(f)
-        feat = gj["features"][0]
-        ring = feat["geometry"]["coordinates"][0]
-        boundary = [(float(c[0]), float(c[1])) for c in ring]  # (lon, lat)
-    except Exception:
-        return None
+    if map_path.exists():
+        try:
+            with open(map_path, "r", encoding="utf-8-sig") as f:
+                gj = json.load(f)
+            feat = gj["features"][0]
+            ring = feat["geometry"]["coordinates"][0]
+            boundary = [(float(c[0]), float(c[1])) for c in ring]
+        except Exception as exc:
+            logger.warning("PDF map boundary load failed: %s", exc)
+            boundary = []
 
-    if not boundary:
-        return None
+    track_lines: list[tuple[str, list[tuple[float, float]]]] = []
+    for track in tracks:
+        callsign = str(track.get("callsign") or "UNKNOWN")
+        geojson_raw = track.get("geojson")
+        try:
+            geojson = json.loads(geojson_raw) if isinstance(geojson_raw, str) else (geojson_raw or {})
+            coords = geojson.get("coordinates", [])
+            line = []
+            for coord in coords:
+                if len(coord) >= 2:
+                    line.append((float(coord[0]), float(coord[1])))
+            if len(line) >= 2:
+                track_lines.append((callsign, line))
+        except Exception as exc:
+            logger.warning("Track render failed for %s: %s", callsign, exc)
 
-    # bounds from boundary + all points (lat,lon order in points)
     all_lons = [b[0] for b in boundary]
     all_lats = [b[1] for b in boundary]
     for lat, lon, _ in points:
@@ -225,57 +238,73 @@ def _render_static_map(points: list[tuple[float, float, str]], width: int = 320,
             all_lats.append(float(lat))
         except Exception:
             pass
-
-    if not all_lons or not all_lats:
-        return None
-
-    pad = 0.8
-    min_lon = min(all_lons) - pad
-    max_lon = max(all_lons) + pad
-    min_lat = min(all_lats) - pad
-    max_lat = max(all_lats) + pad
+    for _, line in track_lines:
+        for lon, lat in line:
+            all_lons.append(lon)
+            all_lats.append(lat)
 
     W, H = int(width), int(height)
-    margin = 12
     img = PILImage.new("RGB", (W, H), "white")
     draw = ImageDraw.Draw(img)
+    font = ImageFont.load_default()
+
+    if not all_lons or not all_lats:
+        draw.text((W // 2 - 48, H // 2), "No map data available", fill=(110, 110, 110), font=font)
+        bio = BytesIO()
+        img.save(bio, format="PNG")
+        return bio.getvalue()
+
+    pad_lon = max((max(all_lons) - min(all_lons)) * 0.08, 0.05)
+    pad_lat = max((max(all_lats) - min(all_lats)) * 0.08, 0.05)
+    min_lon = min(all_lons) - pad_lon
+    max_lon = max(all_lons) + pad_lon
+    min_lat = min(all_lats) - pad_lat
+    max_lat = max(all_lats) + pad_lat
+    if max_lon == min_lon:
+        max_lon += 0.05
+        min_lon -= 0.05
+    if max_lat == min_lat:
+        max_lat += 0.05
+        min_lat -= 0.05
+
+    margin = 18
 
     def proj(lon: float, lat: float):
         x = margin + (float(lon) - min_lon) / (max_lon - min_lon) * (W - 2 * margin)
         y = margin + (max_lat - float(lat)) / (max_lat - min_lat) * (H - 2 * margin)
         return int(max(margin, min(W - margin, x))), int(max(margin, min(H - margin, y)))
 
-    # Test boundary (light fill + outline)
-    poly = [proj(lon, lat) for lon, lat in boundary]
-    draw.polygon(poly, fill=(232, 244, 255), outline=(25, 70, 130), width=2)
+    if boundary:
+        poly = [proj(lon, lat) for lon, lat in boundary]
+        draw.polygon(poly, fill=(232, 244, 255), outline=(25, 70, 130))
 
-    # pins + labels (red dot + small text)
-    font = ImageFont.load_default()
+    track_colors = [(255, 107, 53), (0, 191, 255), (124, 252, 0), (255, 215, 0), (255, 105, 180), (129, 140, 248)]
+    for idx, (callsign, line) in enumerate(track_lines):
+        color = track_colors[idx % len(track_colors)]
+        pixels = [proj(lon, lat) for lon, lat in line]
+        if len(pixels) >= 2:
+            draw.line(pixels, fill=color, width=3)
+            lx, ly = pixels[-1]
+            draw.text((lx + 4, ly - 6), callsign[:12], fill=color, font=font)
+
     for lat, lon, label in points:
         try:
             px, py = proj(float(lon), float(lat))
-            r = 5
-            # pin dot
-            draw.ellipse([px - r, py - r, px + r, py + r], fill=(200, 30, 30), outline=(255, 220, 220))
-            # tiny stem
-            draw.line([px, py + r, px, py + r + 4], fill=(80, 80, 80), width=1)
-            # label
-            lab = str(label or "")[:9]
+            draw.polygon([(px, py + 9), (px - 6, py - 4), (px + 6, py - 4)], fill=(200, 30, 30), outline=(90, 20, 20))
+            lab = str(label or "")[:12]
             if lab:
-                draw.text((px + 5, py - 3), lab, fill=(20, 20, 20), font=font)
+                draw.text((px + 7, py - 8), lab, fill=(20, 20, 20), font=font)
         except Exception:
             continue
 
-    # very small context label
     try:
-        draw.text((4, 2), "TEST", fill=(90, 90, 90), font=font)
+        draw.text((6, 4), "Area of Operations", fill=(70, 70, 70), font=font)
     except Exception:
         pass
 
     bio = BytesIO()
     img.save(bio, format="PNG")
     return bio.getvalue()
-
 
 def _photo_flowable(path: str | Path, width: float):
     if not _HAS_RENDER_DEPS:
@@ -431,60 +460,104 @@ def generate_single_pdf(report: dict[str, Any], photos: list, links: list, lang:
     return path
 
 
-def generate_bundle_pdf(reports: list, photos_by_id: dict, links_by_id: dict, lang: str = "en") -> Path:
+def _normalize_sections(sections: dict | None) -> dict[str, bool]:
+    defaults = {"cover": True, "map": True, "reports": True, "photos": False}
+    if not isinstance(sections, dict):
+        return defaults
+    return {key: bool(sections.get(key, default)) for key, default in defaults.items()}
+
+
+def _photos_gallery_story(photos_by_id: dict, styles: dict) -> list:
+    story: list = [Paragraph("Photos Gallery", styles["label"]), Spacer(1, 2 * mm)]
+    seen: set[str] = set()
+    count = 0
+    for photos in photos_by_id.values():
+        for ph in photos or []:
+            marker = str(ph.get("id") or ph.get("stored_path") or ph.get("original_filename") or count)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            image_path = ph.get("thumb_path") or ph.get("stored_path")
+            flowable = _photo_flowable(image_path, width=42 * mm) if image_path else None
+            if not flowable:
+                continue
+            fname = ph.get("caption") or ph.get("original_filename") or "Photo"
+            gps = ""
+            if ph.get("latitude") and ph.get("longitude"):
+                gps = f"  {ph['latitude']:.4f}, {ph['longitude']:.4f}"
+            story.append(flowable)
+            story.append(Paragraph(f"{fname}{gps}", styles["small"]))
+            story.append(Spacer(1, 2 * mm))
+            count += 1
+    if count == 0:
+        story.append(Paragraph("No linked photos available.", styles["muted"]))
+    return story
+
+
+def generate_bundle_pdf(reports: list, photos_by_id: dict, links_by_id: dict, lang: str = "en", sections: dict | None = None, tracks: list | None = None) -> Path:
     now    = datetime.utcnow()
     folder = ensure_reports_dir(now.year, now.month)
     path   = folder / _bundle_filename(len(reports))
 
+    sections = _normalize_sections(sections)
+    tracks = tracks or []
     lbl     = _lbl(lang)
     rel_lbl = _rel_labels(lang)
     styles  = _make_styles()
     doc     = _build_doc(path)
     date_str = now.strftime("%d %b %Y %H:%M")
-    story = [
-        Paragraph(lbl["header_bundle"], styles["title"]),
-        Paragraph(f"{len(reports)} {lbl['generated_on']} {date_str}", styles["muted"]),
-        Spacer(1, 8 * mm),
-    ]
+    story: list = []
 
-    # For bundles: render ONE combined map with ALL report locations/pins (as requested).
-    # Insert overview early; suppress per-section individual maps below.
-    locs = []
-    for rep in reports:
-        la = rep.get("latitude")
-        lo = rep.get("longitude")
-        if la is not None and lo is not None:
-            rid = rep.get("id", "?")
-            lab = rep.get("report_number") or (f"RPT-{int(rid):03d}" if str(rid).isdigit() else f"RPT-{rid}")
-            locs.append((la, lo, lab))
-    if locs:
+    if sections.get("cover", True):
+        story.extend([
+            Paragraph(lbl["header_bundle"], styles["title"]),
+            Paragraph(f"{len(reports)} {lbl['generated_on']} {date_str}", styles["muted"]),
+            Spacer(1, 8 * mm),
+        ])
+
+    if sections.get("map", True):
+        locs = []
+        for rep in reports:
+            la = rep.get("latitude")
+            lo = rep.get("longitude")
+            if la is not None and lo is not None:
+                rid = rep.get("id", "?")
+                lab = rep.get("report_number") or (f"RPT-{int(rid):03d}" if str(rid).isdigit() else f"RPT-{rid}")
+                locs.append((la, lo, lab))
         try:
-            png = _render_static_map(locs)
+            png = _render_static_map(locs, tracks=tracks)
             if not png:
                 raise RuntimeError("static map returned no image")
-            story.append(Paragraph("Map - Locations", styles["label"]))
-            story.append(Image(BytesIO(png), width=72 * mm, height=40 * mm))
+            story.append(Paragraph("Map - Patrol Tracks and Report Pins", styles["label"]))
+            story.append(Image(BytesIO(png), width=170 * mm, height=96 * mm))
             story.append(Spacer(1, 4 * mm))
         except Exception as e:
             logger.error(f"PDF map render failed: {e}")
             raise
 
-    for i, report in enumerate(reports):
-        if i > 0:
+    if sections.get("reports", True):
+        for report in reports:
+            if story:
+                story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#d1d5db"), spaceAfter=6 * mm))
+            rid = report.get("id")
+            story += _report_story(
+                report,
+                [],
+                links_by_id.get(rid, []),
+                styles, lbl, rel_lbl,
+                as_section=True,
+                include_individual_map=False,
+                lang=lang,
+            )
+            story.append(Spacer(1, 6 * mm))
+
+    if sections.get("photos", False):
+        if story:
             story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#d1d5db"), spaceAfter=6 * mm))
-        rid    = report.get("id")
-        story += _report_story(
-            report,
-            photos_by_id.get(rid, []),
-            links_by_id.get(rid, []),
-            styles, lbl, rel_lbl,
-            as_section=True,
-            include_individual_map=False,
-            lang=lang,
-        )
-        story.append(Spacer(1, 6 * mm))
+        story += _photos_gallery_story(photos_by_id, styles)
+
+    if not story:
+        story.append(Paragraph("No sections selected.", styles["muted"]))
 
     doc.build(story)
     return path
-
-
