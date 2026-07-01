@@ -1065,3 +1065,63 @@ footer {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+
+.track-manager {
+  margin: 6px 0 10px;
+}
+
+.track-manager-toggle {
+  font-weight: 800;
+}
+
+.track-manager-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card-strong);
+}
+
+.track-manager-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto minmax(140px, auto) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--input);
+  font-size: 12px;
+}
+
+.track-manager-name {
+  display: grid;
+  min-width: 0;
+}
+
+.track-manager-name span {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-color-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.5);
+  display: inline-block;
+}
+
+@media (max-width: 760px) {
+  .track-manager-row {
+    grid-template-columns: auto 1fr auto;
+  }
+  .track-manager-name {
+    grid-column: 1 / -1;
+  }
+}

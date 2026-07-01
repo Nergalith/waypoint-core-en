@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useRef, useState } from "react";
 import * as L from "leaflet";
-import { createPin, deletePin, getTracks, importAar } from "../api";
+import { createPin, deletePin, deleteTrack, getTracks, importAar } from "../api";
 import { t } from "../i18n";
 import { createPinIcon, DEFAULT_PIN_COLOR, PIN_CATEGORIES, STATUS_COLORS } from "../pinConstants";
 import { triggerGlobalRefresh } from "../utils/refreshBus";
@@ -57,6 +57,8 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   const [trackVisibility, setTrackVisibility] = useState({});
   const [callsignColors, setCallsignColors] = useState(callsignColorsRef.current);
   const [showAarImport, setShowAarImport] = useState(false);
+  const [showTrackManager, setShowTrackManager] = useState(false);
+  const [deletingTrackId, setDeletingTrackId] = useState(null);
 
   useEffect(() => {
     pickCoordsModeRef.current = pickCoordsMode;
@@ -510,12 +512,69 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   function centerOnDefaultMap() {
     const map = leafletMap.current;
     if (!map) return;
+    const pinBounds = collectVisiblePinBounds();
+    if (pinBounds?.isValid()) {
+      map.fitBounds(pinBounds, { padding: [40, 40], maxZoom: 13 });
+      setStatus("Centered on visible pins.");
+      return;
+    }
     if (packageBoundsRef.current?.isValid()) {
       map.fitBounds(packageBoundsRef.current.pad(0.08));
     } else {
       map.setView(MAP_DEFAULT_CENTER, INITIAL_ZOOM);
     }
     setStatus(tt("map.status_focus", { lat: MAP_DEFAULT_CENTER[0].toFixed(1), lon: MAP_DEFAULT_CENTER[1].toFixed(1) }) + " - test map");
+  }
+
+  function centerOnTracks() {
+    const map = leafletMap.current;
+    if (!map) return;
+    const bounds = collectTrackBounds();
+    if (bounds?.isValid()) {
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+      setStatus("Centered on patrol tracks.");
+    } else {
+      setStatus("No patrol tracks to center on.");
+    }
+  }
+
+  function collectVisiblePinBounds() {
+    if (!layersRef.current.pins || !L || layerVisibilityRef.current.pins === false) return null;
+    const latlngs = [];
+    layersRef.current.pins.eachLayer((layer) => {
+      if (layer.getLatLng) latlngs.push(layer.getLatLng());
+    });
+    return latlngs.length ? L.latLngBounds(latlngs) : null;
+  }
+
+  function collectTrackBounds() {
+    if (!L) return null;
+    const latlngs = [];
+    Object.values(trackLayersRef.current || {}).forEach((group) => {
+      if (!group?.eachLayer) return;
+      group.eachLayer((layer) => {
+        if (!layer.getLatLngs) return;
+        flattenLatLngs(layer.getLatLngs()).forEach((latlng) => latlngs.push(latlng));
+      });
+    });
+    return latlngs.length ? L.latLngBounds(latlngs) : null;
+  }
+
+  async function handleDeleteTrack(trackId) {
+    if (deletingTrackId) return;
+    setDeletingTrackId(trackId);
+    try {
+      await deleteTrack(trackId);
+      setTracks((current) => (Array.isArray(current) ? current.filter((track) => track.id !== trackId) : []));
+      const nextTracks = (Array.isArray(tracks) ? tracks : []).filter((track) => track.id !== trackId);
+      renderTracks(nextTracks);
+      triggerGlobalRefresh();
+      setStatus("Patrol track deleted.");
+    } catch {
+      setStatus("Could not delete patrol track.");
+    } finally {
+      setDeletingTrackId(null);
+    }
   }
 
   function clearManualPins() {
@@ -592,6 +651,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
         <h2 style={{ margin: 0 }}>{tt("map.title")}</h2>
         <div className="map-actions">
           <button className="small-action" title={tt("map.center")} onClick={centerOnDefaultMap} style={{ marginRight: 6 }}>{tt("map.center")}</button>
+          <button className="small-action" title="Center on tracks" onClick={centerOnTracks} style={{ marginRight: 6 }}>Center on tracks</button>
           <button
             className="small-action"
             title={pickCoordsMode ? tt("map.pick_cancel") : tt("map.pick_coords")}
@@ -638,6 +698,46 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
             />
           </label>
         ))}
+      </div>
+
+      <div className="track-manager">
+        <button
+          type="button"
+          className="small-action track-manager-toggle"
+          onClick={() => setShowTrackManager((value) => !value)}
+        >
+          Patrol Tracks ({Array.isArray(tracks) ? tracks.length : 0})
+        </button>
+        {showTrackManager && (
+          <div className="track-manager-list">
+            {(!Array.isArray(tracks) || tracks.length === 0) && (
+              <div className="empty-state">No patrol tracks imported yet.</div>
+            )}
+            {(Array.isArray(tracks) ? tracks : []).map((track) => {
+              const callsign = String(track.callsign || "UNKNOWN").toUpperCase();
+              const color = getCallsignColor(callsign, callsignColors);
+              return (
+                <div className="track-manager-row" key={track.id}>
+                  <div className="track-manager-name">
+                    <strong>{callsign}</strong>
+                    <span>{track.filename || "AAR import"}</span>
+                  </div>
+                  <span className="track-color-swatch" style={{ background: color }} title={color} />
+                  <span>{Number(track.point_count || track.geojson?.coordinates?.length || 0)} pts</span>
+                  <span>{track.timestamp || "unknown time"}</span>
+                  <button
+                    type="button"
+                    className="small-action"
+                    disabled={deletingTrackId === track.id}
+                    onClick={() => handleDeleteTrack(track.id)}
+                  >
+                    {deletingTrackId === track.id ? "..." : "Delete"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="map-container">
@@ -771,6 +871,11 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       )}
     </div>
   );
+}
+
+function flattenLatLngs(value) {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => (Array.isArray(item) ? flattenLatLngs(item) : [item])).filter(Boolean);
 }
 
 function addMbtilesBaseLayer(map) {
