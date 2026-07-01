@@ -769,7 +769,6 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
                     onChange={(event) => updateTrackColor(track.id, event.target.value)}
                     title="Change track color"
                   />
-                  <strong>WAYFINDER</strong>
                   <div className="track-manager-name">
                     <strong>{callsign}</strong>
                     <span>{track.filename || "AAR import"}</span>

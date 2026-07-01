@@ -64,13 +64,13 @@ async def import_aar(file: UploadFile = File(...)):
     try:
         if filename.endswith(".zip"):
             tracks = parse_zip(content)
-            apply_wayfinder_callsign(tracks, original_filename)
         elif filename.endswith(".gpx"):
             tracks = parse_gpx(content, original_filename)
         elif filename.endswith(".kml"):
             tracks = parse_kml(content, original_filename)
         else:
             raise HTTPException(status_code=400, detail="Unsupported format. Upload .zip, .gpx, or .kml")
+        apply_wayfinder_callsign(tracks, original_filename)
     except HTTPException:
         raise
     except Exception as exc:
@@ -378,9 +378,11 @@ def extract_callsign(filename: str) -> str:
 
 
 def extract_wayfinder_callsign(filename: str) -> str:
+    # Wayfinder_BRAVO_20260701_101719.zip -> BRAVO
+    # Wayfinder_ALPHA_20260629_070709.gpx -> ALPHA
     base = os.path.basename(filename).split(".")[0]
     parts = base.split("_")
-    if len(parts) >= 2 and parts[0].lower() == "wayfinder" and parts[1]:
+    if len(parts) >= 2 and parts[0].lower() == "wayfinder":
         return parts[1].upper()
     return "UNKNOWN"
 
