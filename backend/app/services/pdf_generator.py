@@ -188,9 +188,8 @@ def _build_doc(path: Path) -> SimpleDocTemplate:
 
 
 # ---------------------------------------------------------------------------
-# Offline static test map renderer (uses only local admin0.geojson + Pillow)
-# Renders the generic test boundary + pin(s) at report location(s). Small PNG for embedding.
-# For bundles, pass multiple points to show all on one map.
+# Offline static GPS map renderer (Pillow).
+# Bounds come only from report pins and patrol tracks, never from background map data.
 # ---------------------------------------------------------------------------
 
 def _render_static_map(points: list[tuple[float, float, str]], tracks: list | None = None, width: int = 640, height: int = 360) -> bytes | None:
@@ -200,20 +199,6 @@ def _render_static_map(points: list[tuple[float, float, str]], tracks: list | No
 
     points = points or []
     tracks = tracks or []
-    boundary: list[tuple[float, float]] = []
-    map_path = ROOT_DIR / "frontend" / "public" / "maps" / "test" / "admin0.geojson"
-
-    if map_path.exists():
-        try:
-            with open(map_path, "r", encoding="utf-8-sig") as f:
-                gj = json.load(f)
-            feat = gj["features"][0]
-            ring = feat["geometry"]["coordinates"][0]
-            boundary = [(float(c[0]), float(c[1])) for c in ring]
-        except Exception as exc:
-            logger.warning("PDF map boundary load failed: %s", exc)
-            boundary = []
-
     track_lines: list[tuple[str, list[tuple[float, float]]]] = []
     for track in tracks:
         callsign = str(track.get("callsign") or "UNKNOWN")
@@ -230,8 +215,8 @@ def _render_static_map(points: list[tuple[float, float, str]], tracks: list | No
         except Exception as exc:
             logger.warning("Track render failed for %s: %s", callsign, exc)
 
-    all_lons = [b[0] for b in boundary]
-    all_lats = [b[1] for b in boundary]
+    all_lons: list[float] = []
+    all_lats: list[float] = []
     for lat, lon, _ in points:
         try:
             all_lons.append(float(lon))
@@ -274,23 +259,19 @@ def _render_static_map(points: list[tuple[float, float, str]], tracks: list | No
         y = margin + (max_lat - float(lat)) / (max_lat - min_lat) * (H - 2 * margin)
         return int(max(margin, min(W - margin, x))), int(max(margin, min(H - margin, y)))
 
-    if boundary:
-        poly = [proj(lon, lat) for lon, lat in boundary]
-        draw.polygon(poly, fill=(232, 244, 255), outline=(25, 70, 130))
-
     track_colors = [(255, 107, 53), (0, 191, 255), (124, 252, 0), (255, 215, 0), (255, 105, 180), (129, 140, 248)]
     for idx, (callsign, line) in enumerate(track_lines):
         color = track_colors[idx % len(track_colors)]
         pixels = [proj(lon, lat) for lon, lat in line]
         if len(pixels) >= 2:
-            draw.line(pixels, fill=color, width=3)
+            draw.line(pixels, fill=color, width=5)
             lx, ly = pixels[-1]
             draw.text((lx + 4, ly - 6), callsign[:12], fill=color, font=font)
 
     for lat, lon, label in points:
         try:
             px, py = proj(float(lon), float(lat))
-            draw.polygon([(px, py + 9), (px - 6, py - 4), (px + 6, py - 4)], fill=(200, 30, 30), outline=(90, 20, 20))
+            draw.polygon([(px, py + 14), (px - 9, py - 6), (px + 9, py - 6)], fill=(200, 30, 30), outline=(90, 20, 20))
             lab = str(label or "")[:12]
             if lab:
                 draw.text((px + 7, py - 8), lab, fill=(20, 20, 20), font=font)
@@ -393,9 +374,7 @@ def _report_story(
         story.append(Paragraph(lbl["coords"], styles["label"]))
         story.append(Paragraph(f"{lat:.5f}, {lon:.5f}", styles["normal"]))
 
-    # Embed small offline static map (test-map boundary + pin at this report's location).
-    # Uses local GeoJSON only. For bundles the caller can suppress per-report maps
-    # and provide a combined overview instead.
+    # Embed a small offline coordinate plot at this report's location.
     if include_individual_map and lat is not None and lon is not None:
         try:
             png = _render_static_map([(lat, lon, str(rnum))])
