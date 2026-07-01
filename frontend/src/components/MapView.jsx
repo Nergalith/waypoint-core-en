@@ -42,6 +42,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   const trackLayersRef = useRef({});
   const trackPolylinesRef = useRef({});
   const trackColorsRef = useRef(loadStoredTrackColors());
+  const trackVisibilityRef = useRef({});
   const layerVisibilityRef = useRef(DEFAULT_LAYER_VISIBILITY);
   const packageBoundsRef = useRef(null);
   const pickCoordsModeRef = useRef(false);
@@ -71,6 +72,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   }, [layerVisibility]);
 
   useEffect(() => {
+    trackVisibilityRef.current = trackVisibility;
     applyLayerVisibility();
   }, [trackVisibility]);
 
@@ -266,7 +268,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
         trackPolylinesRef.current[trackId] = polyline;
       });
       const nextVisibility = {};
-      Object.keys(trackLayersRef.current).forEach((trackId) => { nextVisibility[trackId] = trackVisibility[trackId] !== false; });
+      Object.keys(trackLayersRef.current).forEach((trackId) => { nextVisibility[trackId] = trackVisibilityRef.current[trackId] !== false; });
       setTrackVisibility(nextVisibility);
       applyLayerVisibility(map);
     } catch (err) {
@@ -317,6 +319,42 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     const polyline = trackPolylinesRef.current[normalized];
     if (polyline?.setStyle) polyline.setStyle({ color });
   }
+
+  function toggleTrackVisibility(trackId, visible) {
+    const normalized = String(trackId ?? "UNKNOWN");
+    const group = trackLayersRef.current[normalized];
+    const parent = layersRef.current.tracks;
+    const map = leafletMap.current;
+    if (visible && layerVisibilityRef.current.tracks === false) {
+      layerVisibilityRef.current = { ...layerVisibilityRef.current, tracks: true };
+      setLayerVisibility((current) => ({ ...current, tracks: true }));
+    }
+    if (group && parent) {
+      if (visible && !parent.hasLayer(group)) {
+        group.addTo(parent);
+        if (map && !map.hasLayer(parent)) parent.addTo(map);
+      }
+      if (!visible && parent.hasLayer(group)) parent.removeLayer(group);
+    }
+    const next = { ...trackVisibilityRef.current, [normalized]: visible };
+    trackVisibilityRef.current = next;
+    setTrackVisibility(next);
+  }
+
+  function setAllTrackVisibility(visible) {
+    const next = {};
+    Object.keys(trackLayersRef.current || {}).forEach((trackId) => {
+      next[trackId] = visible;
+      const group = trackLayersRef.current[trackId];
+      const parent = layersRef.current.tracks;
+      if (!group || !parent) return;
+      if (visible && !parent.hasLayer(group)) group.addTo(parent);
+      if (!visible && parent.hasLayer(group)) parent.removeLayer(group);
+    });
+    trackVisibilityRef.current = next;
+    setTrackVisibility(next);
+  }
+
   async function handleAarFile(file) {
     const result = await importAar(file);
     await loadPatrolTracks();
@@ -626,7 +664,9 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   }
 
   function toggleLayer(key) {
-    setLayerVisibility((current) => ({ ...current, [key]: !current[key] }));
+    const nextVisible = !layerVisibilityRef.current[key];
+    if (key === "tracks") setAllTrackVisibility(nextVisible);
+    setLayerVisibility((current) => ({ ...current, [key]: nextVisible }));
   }
 
   function applyLayerVisibility(map = leafletMap.current) {
@@ -648,7 +688,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     });
     Object.entries(trackLayersRef.current).forEach(([trackId, layer]) => {
       if (!layersRef.current.tracks) return;
-      const visible = trackVisibility[trackId] !== false;
+      const visible = trackVisibilityRef.current[trackId] !== false;
       if (visible && !layersRef.current.tracks.hasLayer(layer)) layer.addTo(layersRef.current.tracks);
       if (!visible && layersRef.current.tracks.hasLayer(layer)) layersRef.current.tracks.removeLayer(layer);
     });
@@ -716,6 +756,12 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
               const color = getTrackColor(track, index, trackColors);
               return (
                 <div className="track-manager-row" key={track.id}>
+                  <input
+                    type="checkbox"
+                    checked={trackVisibility[String(track.id)] ?? true}
+                    onChange={(event) => toggleTrackVisibility(track.id, event.target.checked)}
+                    title="Show or hide this track"
+                  />
                   <input
                     type="color"
                     className="track-color-picker"

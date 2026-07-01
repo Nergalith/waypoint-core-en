@@ -1077,7 +1077,7 @@ footer {
 
 .track-manager-row {
   display: grid;
-  grid-template-columns: auto auto minmax(180px, 1fr) auto minmax(140px, auto) auto;
+  grid-template-columns: auto auto auto minmax(180px, 1fr) auto minmax(140px, auto) auto;
   align-items: center;
   gap: 10px;
   padding: 6px 8px;
@@ -1111,7 +1111,7 @@ footer {
 
 @media (max-width: 760px) {
   .track-manager-row {
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto auto 1fr auto;
   }
   .track-manager-name {
     grid-column: 1 / -1;
