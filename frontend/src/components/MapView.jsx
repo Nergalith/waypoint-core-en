@@ -258,8 +258,14 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
         const trackId = getTrackId(track, index);
         const callsign = String(track?.callsign || "UNKNOWN").toUpperCase();
         const coords = Array.isArray(track?.geojson?.coordinates) ? track.geojson.coordinates : [];
-        const latlngs = coords.map((coord) => [Number(coord?.[1]), Number(coord?.[0])]).filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon));
-        if (latlngs.length < 2) return;
+        const latlngs = coords
+          .filter((coord) => Array.isArray(coord) && coord.length >= 2)
+          .map((coord) => [Number(coord[1]), Number(coord[0])])
+          .filter(([lat, lon]) => isValidCoord(lat, lon));
+        if (latlngs.length < 2) {
+          console.warn(`Track ${callsign} skipped - insufficient valid coordinates (${latlngs.length})`);
+          return;
+        }
         const group = L.layerGroup().addTo(layersRef.current.tracks);
         const polyline = L.polyline(latlngs, { color: getTrackColor(track, index, colorMap), weight: 2.5, opacity: 0.9 })
           .bindPopup(`<b>${escapeHtml(callsign)}</b><br/>${escapeHtml(track.filename || "AAR import")}<br/>${escapeHtml(track.timestamp || "")}<br/>${Number(track.point_count || latlngs.length)} points`)
@@ -370,7 +376,12 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     group.clearLayers();
 
     items.forEach((item) => {
-      const marker = L.marker([item.lat, item.lon], {
+      if (!isValidCoord(item.lat, item.lon)) {
+        console.warn(`Pin ${item.id ?? item.sourceId ?? "unknown"} skipped - invalid coordinates`);
+        return;
+      }
+
+      const marker = L.marker([Number(item.lat), Number(item.lon)], {
         icon: createPinIcon(item.category, item.color),
       });
 
@@ -923,6 +934,16 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   );
 }
 
+function isValidCoord(lat, lon) {
+  const latitude = Number(lat);
+  const longitude = Number(lon);
+  return Number.isFinite(latitude)
+    && Number.isFinite(longitude)
+    && latitude >= -90
+    && latitude <= 90
+    && longitude >= -180
+    && longitude <= 180;
+}
 function flattenLatLngs(value) {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => (Array.isArray(item) ? flattenLatLngs(item) : [item])).filter(Boolean);
