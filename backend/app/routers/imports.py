@@ -59,14 +59,16 @@ async def import_bundle(file: UploadFile = File(...)):
 @router.post("/api/imports/aar")
 async def import_aar(file: UploadFile = File(...)):
     content = await file.read()
-    filename = (file.filename or "").lower()
+    original_filename = file.filename or "track"
+    filename = original_filename.lower()
     try:
         if filename.endswith(".zip"):
             tracks = parse_zip(content)
+            apply_wayfinder_callsign(tracks, original_filename)
         elif filename.endswith(".gpx"):
-            tracks = parse_gpx(content, file.filename or "track.gpx")
+            tracks = parse_gpx(content, original_filename)
         elif filename.endswith(".kml"):
-            tracks = parse_kml(content, file.filename or "track.kml")
+            tracks = parse_kml(content, original_filename)
         else:
             raise HTTPException(status_code=400, detail="Unsupported format. Upload .zip, .gpx, or .kml")
     except HTTPException:
@@ -75,7 +77,7 @@ async def import_aar(file: UploadFile = File(...)):
         logger.error("AAR parse failed: %s", exc)
         raise HTTPException(status_code=500, detail=f"Failed to parse file: {exc}") from exc
 
-    result = _save_tracks(tracks, file.filename or "track")
+    result = _save_tracks(tracks, original_filename)
     if not result:
         raise HTTPException(status_code=400, detail="No tracks found in file")
     return result
@@ -224,17 +226,31 @@ def _ingest_wayfinder(zf: zipfile.ZipFile, filename: str) -> dict[str, Any]:
             if os.path.basename(lower) == "manifest.json":
                 continue
             tracks.extend(parse_json(zf.read(name), name))
-    result = _save_tracks(tracks, filename)
+    apply_wayfinder_callsign(tracks, filename)
+    result = _save_tracks(tracks, filename, import_label="WAYFINDER")
     if not result:
         raise HTTPException(status_code=400, detail="No tracks found in Wayfinder bundle")
-    result["imported"] = "WAYFINDER"
     return result
 
 
-def _save_tracks(tracks: list[dict[str, Any]], filename: str) -> dict[str, Any] | None:
+def _save_tracks(tracks: list[dict[str, Any]], filename: str, import_label: str | None = None) -> dict[str, Any] | None:
     if not tracks:
         return None
     with sqlite3.connect(DB_PATH) as conn:
+        existing = conn.execute(
+            "SELECT id FROM patrol_tracks WHERE import_filename = ?",
+            (filename,),
+        ).fetchone()
+        if existing:
+            label = import_label or "AAR"
+            return {
+                "imported": label,
+                "skipped": True,
+                "reason": f"Track {filename} already imported - skipped",
+                "existing_id": existing[0],
+                "callsigns": [],
+                "point_counts": {},
+            }
         for track in tracks:
             point_count = len(track["geojson"].get("coordinates", []))
             conn.execute(
@@ -242,11 +258,11 @@ def _save_tracks(tracks: list[dict[str, Any]], filename: str) -> dict[str, Any] 
                 (track["callsign"], filename, track["format"], point_count, json.dumps(track["geojson"])),
             )
     return {
-        "imported": len(tracks),
+        "imported": import_label or len(tracks),
+        "track_count": len(tracks),
         "callsigns": [track["callsign"] for track in tracks],
         "point_counts": {track["callsign"]: len(track["geojson"].get("coordinates", [])) for track in tracks},
     }
-
 
 def _save_field_node_photo(conn, zf: zipfile.ZipFile, photo_filename: str, lfi_id: int, report_number: str, timestamp: str, caption: str = "") -> dict[str, Any] | None:
     member = _find_zip_member(zf, photo_filename)
@@ -360,6 +376,21 @@ def extract_callsign(filename: str) -> str:
     parts = base.split("_")
     return parts[0].upper() if parts and parts[0] else "UNKNOWN"
 
+
+def extract_wayfinder_callsign(filename: str) -> str:
+    base = os.path.basename(filename).split(".")[0]
+    parts = base.split("_")
+    if len(parts) >= 2 and parts[0].lower() == "wayfinder" and parts[1]:
+        return parts[1].upper()
+    return "UNKNOWN"
+
+
+def apply_wayfinder_callsign(tracks: list[dict[str, Any]], filename: str) -> None:
+    callsign = extract_wayfinder_callsign(filename)
+    if callsign == "UNKNOWN":
+        return
+    for track in tracks:
+        track["callsign"] = callsign
 
 def parse_gpx(data: bytes, filename: str) -> list[dict]:
     callsign = extract_callsign(filename)

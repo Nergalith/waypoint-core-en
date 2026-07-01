@@ -19,7 +19,7 @@ const DEFAULT_LAYER_VISIBILITY = {
 };
 const CHUNK_SIZE = 120;
 const DEV_MAP_LOG = import.meta.env?.DEV;
-const TRACK_COLOR_STORAGE_KEY = "waypoint-track-callsign-colors";
+const TRACK_COLOR_STORAGE_PREFIX = "track_color_";
 const TRACK_COLOR_PALETTE = [
   "#42c8ff",
   "#ff6b35",
@@ -40,7 +40,8 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   const leafletMap = useRef(null);
   const layersRef = useRef({ pins: null, country: null, prefectures: null, roads: null, rivers: null, places: null, borders: null, tracks: null });
   const trackLayersRef = useRef({});
-  const callsignColorsRef = useRef(loadStoredCallsignColors());
+  const trackPolylinesRef = useRef({});
+  const trackColorsRef = useRef(loadStoredTrackColors());
   const layerVisibilityRef = useRef(DEFAULT_LAYER_VISIBILITY);
   const packageBoundsRef = useRef(null);
   const pickCoordsModeRef = useRef(false);
@@ -55,7 +56,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   const [pinSaving, setPinSaving] = useState(false);
   const [tracks, setTracks] = useState([]);
   const [trackVisibility, setTrackVisibility] = useState({});
-  const [callsignColors, setCallsignColors] = useState(callsignColorsRef.current);
+  const [trackColors, setTrackColors] = useState(trackColorsRef.current);
   const [showAarImport, setShowAarImport] = useState(false);
   const [showTrackManager, setShowTrackManager] = useState(false);
   const [deletingTrackId, setDeletingTrackId] = useState(null);
@@ -74,8 +75,8 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   }, [trackVisibility]);
 
   useEffect(() => {
-    if (leafletMap.current) renderTracks(tracks, leafletMap.current, callsignColors);
-  }, [callsignColors]);
+    if (leafletMap.current) renderTracks(tracks, leafletMap.current, trackColors);
+  }, [trackColors]);
 
   const allGeoItems = React.useMemo(() => {
     const items = [];
@@ -154,6 +155,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
         tracks: L.layerGroup(),
       };
       trackLayersRef.current = {};
+      trackPolylinesRef.current = {};
       packageBoundsRef.current = null;
       applyLayerVisibility(map);
       leafletMap.current = map;
@@ -198,6 +200,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       leafletMap.current = null;
       layersRef.current = { pins: null, country: null, prefectures: null, roads: null, rivers: null, places: null, borders: null, tracks: null };
       trackLayersRef.current = {};
+      trackPolylinesRef.current = {};
     }
 
     return () => {
@@ -207,6 +210,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       }
       layersRef.current = { pins: null, country: null, prefectures: null, roads: null, rivers: null, places: null, borders: null, tracks: null };
       trackLayersRef.current = {};
+      trackPolylinesRef.current = {};
     };
   }, [reloadToken]);
 
@@ -232,7 +236,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       const loaded = await getTracks();
       const safeTracks = Array.isArray(loaded) ? loaded : [];
       setTracks(safeTracks);
-      const colors = ensureCallsignColors(safeTracks);
+      const colors = ensureTrackColors(safeTracks);
       renderTracks(safeTracks, map, colors);
     } catch (err) {
       mapLog("tracks load failed", err);
@@ -242,74 +246,77 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     }
   }
 
-  function renderTracks(trackList, map = leafletMap.current, colorMap = callsignColorsRef.current) {
+  function renderTracks(trackList, map = leafletMap.current, colorMap = trackColorsRef.current) {
     if (!map || !layersRef.current.tracks) return;
     try {
       layersRef.current.tracks.clearLayers();
       trackLayersRef.current = {};
-      (Array.isArray(trackList) ? trackList : []).forEach((track) => {
+      trackPolylinesRef.current = {};
+      (Array.isArray(trackList) ? trackList : []).forEach((track, index) => {
+        const trackId = getTrackId(track, index);
         const callsign = String(track?.callsign || "UNKNOWN").toUpperCase();
-        if (!trackLayersRef.current[callsign]) {
-          trackLayersRef.current[callsign] = L.layerGroup().addTo(layersRef.current.tracks);
-        }
         const coords = Array.isArray(track?.geojson?.coordinates) ? track.geojson.coordinates : [];
         const latlngs = coords.map((coord) => [Number(coord?.[1]), Number(coord?.[0])]).filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon));
         if (latlngs.length < 2) return;
-        L.polyline(latlngs, { color: getCallsignColor(callsign, colorMap), weight: 2.5, opacity: 0.9 })
+        const group = L.layerGroup().addTo(layersRef.current.tracks);
+        const polyline = L.polyline(latlngs, { color: getTrackColor(track, index, colorMap), weight: 2.5, opacity: 0.9 })
           .bindPopup(`<b>${escapeHtml(callsign)}</b><br/>${escapeHtml(track.filename || "AAR import")}<br/>${escapeHtml(track.timestamp || "")}<br/>${Number(track.point_count || latlngs.length)} points`)
-          .addTo(trackLayersRef.current[callsign]);
+          .addTo(group);
+        trackLayersRef.current[trackId] = group;
+        trackPolylinesRef.current[trackId] = polyline;
       });
       const nextVisibility = {};
-      Object.keys(trackLayersRef.current).forEach((callsign) => { nextVisibility[callsign] = trackVisibility[callsign] !== false; });
+      Object.keys(trackLayersRef.current).forEach((trackId) => { nextVisibility[trackId] = trackVisibility[trackId] !== false; });
       setTrackVisibility(nextVisibility);
       applyLayerVisibility(map);
     } catch (err) {
       mapLog("track render failed", err);
       trackLayersRef.current = {};
+      trackPolylinesRef.current = {};
       setStatus("Patrol tracks could not be drawn. Map remains usable.");
     }
   }
 
 
-  function ensureCallsignColors(trackList) {
-    const next = { ...callsignColorsRef.current };
+  function ensureTrackColors(trackList) {
+    const next = { ...trackColorsRef.current };
     const used = new Set(Object.values(next).map((value) => String(value).toLowerCase()));
     let changed = false;
 
-    (trackList || []).forEach((track) => {
-      const callsign = String(track.callsign || "UNKNOWN").toUpperCase();
-      if (next[callsign]) return;
+    (trackList || []).forEach((track, index) => {
+      const trackId = getTrackId(track, index);
+      const storedColor = safeLocalStorageGet(trackColorKey(trackId));
+      if (storedColor) {
+        next[trackId] = storedColor;
+        used.add(storedColor.toLowerCase());
+        return;
+      }
+      if (next[trackId]) return;
       const paletteColor = TRACK_COLOR_PALETTE.find((color) => !used.has(color.toLowerCase()));
-      const assigned = paletteColor || fallbackCallsignColor(callsign);
-      next[callsign] = assigned;
+      const assigned = paletteColor || fallbackTrackColor(trackId, index);
+      next[trackId] = assigned;
       used.add(assigned.toLowerCase());
+      try { localStorage.setItem(trackColorKey(trackId), assigned); } catch {}
       changed = true;
     });
 
-    if (changed) saveCallsignColors(next);
+    if (changed) saveTrackColors(next);
     return next;
   }
 
-  function saveCallsignColors(next) {
-    callsignColorsRef.current = next;
-    setCallsignColors(next);
-    try {
-      localStorage.setItem(TRACK_COLOR_STORAGE_KEY, JSON.stringify(next));
-    } catch {}
+  function saveTrackColors(next) {
+    trackColorsRef.current = next;
+    setTrackColors(next);
   }
 
-  function updateCallsignColor(callsign, color) {
-    const normalized = String(callsign || "UNKNOWN").toUpperCase();
-    const next = { ...callsignColorsRef.current, [normalized]: color };
-    saveCallsignColors(next);
-    const group = trackLayersRef.current[normalized];
-    if (group?.eachLayer) {
-      group.eachLayer((layer) => {
-        if (layer.setStyle) layer.setStyle({ color });
-      });
-    }
+  function updateTrackColor(trackId, color) {
+    const normalized = String(trackId ?? "UNKNOWN");
+    const next = { ...trackColorsRef.current, [normalized]: color };
+    try { localStorage.setItem(trackColorKey(normalized), color); } catch {}
+    saveTrackColors(next);
+    const polyline = trackPolylinesRef.current[normalized];
+    if (polyline?.setStyle) polyline.setStyle({ color });
   }
-
   async function handleAarFile(file) {
     const result = await importAar(file);
     await loadPatrolTracks();
@@ -639,9 +646,9 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       if (visible && !map.hasLayer(layer)) layer.addTo(map);
       if (!visible && map.hasLayer(layer)) map.removeLayer(layer);
     });
-    Object.entries(trackLayersRef.current).forEach(([callsign, layer]) => {
+    Object.entries(trackLayersRef.current).forEach(([trackId, layer]) => {
       if (!layersRef.current.tracks) return;
-      const visible = trackVisibility[callsign] !== false;
+      const visible = trackVisibility[trackId] !== false;
       if (visible && !layersRef.current.tracks.hasLayer(layer)) layer.addTo(layersRef.current.tracks);
       if (!visible && layersRef.current.tracks.hasLayer(layer)) layersRef.current.tracks.removeLayer(layer);
     });
@@ -704,16 +711,16 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
             {(!Array.isArray(tracks) || tracks.length === 0) && (
               <div className="empty-state">No patrol tracks imported yet.</div>
             )}
-            {(Array.isArray(tracks) ? tracks : []).map((track) => {
+            {(Array.isArray(tracks) ? tracks : []).map((track, index) => {
               const callsign = String(track.callsign || "UNKNOWN").toUpperCase();
-              const color = getCallsignColor(callsign, callsignColors);
+              const color = getTrackColor(track, index, trackColors);
               return (
                 <div className="track-manager-row" key={track.id}>
                   <input
                     type="color"
                     className="track-color-picker"
                     value={color}
-                    onChange={(event) => updateCallsignColor(callsign, event.target.value)}
+                    onChange={(event) => updateTrackColor(track.id, event.target.value)}
                     title="Change track color"
                   />
                   <strong>WAYFINDER</strong>
@@ -892,25 +899,50 @@ function addMbtilesBaseLayer(map) {
   layer.addTo(map);
 }
 
-function loadStoredCallsignColors() {
+function loadStoredTrackColors() {
+  const colors = {};
   try {
-    const parsed = JSON.parse(localStorage.getItem(TRACK_COLOR_STORAGE_KEY) || "{}");
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith(TRACK_COLOR_STORAGE_PREFIX)) {
+        colors[key.slice(TRACK_COLOR_STORAGE_PREFIX.length)] = localStorage.getItem(key);
+      }
+    }
+  } catch {}
+  return colors;
+}
+
+function trackColorKey(trackId) {
+  return `${TRACK_COLOR_STORAGE_PREFIX}${trackId}`;
+}
+
+function getTrackId(track, index = 0) {
+  return String(track?.id ?? `${track?.callsign || "track"}-${index}`);
+}
+
+function getTrackColor(track, index = 0, colorMap = {}) {
+  const trackId = getTrackId(track, index);
+  return colorMap[trackId] || safeLocalStorageGet(trackColorKey(trackId)) || fallbackTrackColor(trackId, index);
+}
+
+function fallbackTrackColor(trackId, index = 0) {
+  if (TRACK_COLOR_PALETTE[index % TRACK_COLOR_PALETTE.length]) {
+    return TRACK_COLOR_PALETTE[index % TRACK_COLOR_PALETTE.length];
   }
-}
-
-function getCallsignColor(callsign, colorMap = {}) {
-  return colorMap[callsign] || fallbackCallsignColor(callsign);
-}
-
-function fallbackCallsignColor(callsign) {
   let hash = 0;
-  for (let i = 0; i < callsign.length; i += 1) {
-    hash = callsign.charCodeAt(i) + ((hash << 5) - hash);
+  const value = String(trackId || "track");
+  for (let i = 0; i < value.length; i += 1) {
+    hash = value.charCodeAt(i) + ((hash << 5) - hash);
   }
   return `hsl(${Math.abs(hash) % 360}, 75%, 55%)`;
+}
+
+function safeLocalStorageGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 
 function AARImport({ tt, onClose, onImport }) {
@@ -923,7 +955,8 @@ function AARImport({ tt, onClose, onImport }) {
     setStatus(null);
     try {
       const data = await onImport(file);
-      setStatus({ ok: true, message: tt("map.aar_imported", { callsigns: (data.callsigns || []).join(", ") }) });
+      const message = data?.skipped ? (data.reason || "Track already imported - skipped") : tt("map.aar_imported", { callsigns: (data.callsigns || []).join(", ") });
+      setStatus({ ok: true, message });
     } catch (err) {
       setStatus({ ok: false, message: tt("map.aar_error", { message: err.message || "Import failed" }) });
     } finally {
@@ -1046,6 +1079,3 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
-
-
-
