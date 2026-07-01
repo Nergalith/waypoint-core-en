@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
 import { createDocumentPin, deleteDocument, uploadDocuments } from "../api";
 import { t } from "../i18n";
+import { triggerGlobalRefresh } from "../utils/refreshBus";
 
 export default function Documents({ lang = "en", documents = [], links = [], lfiList = [], currentReportContext, onUploaded, onPinCreated, focusedId }) {
   const tt = (key, vars = {}) => t(key, lang, vars);
@@ -41,6 +42,7 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
     try {
       await deleteDocument(docId);
       setStatus(tt("docs.delete_success"));
+      triggerGlobalRefresh();
       if (onUploaded) await onUploaded();
     } catch {
       setStatus(tt("docs.delete_error"));
@@ -88,6 +90,7 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
       setNotes("");
       setRelatedTo("");
       setSourceLabel("");
+      triggerGlobalRefresh();
       if (onUploaded) await onUploaded();
     } catch {
       setStatus(tt("docs.upload_error"));
@@ -105,6 +108,7 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
         label: tt("docs.pin_label", { name: doc.original_filename }),
       });
       setStatus(tt("docs.pin_created", {lat: coord.latitude, lon: coord.longitude}));
+      triggerGlobalRefresh();
       if (onPinCreated) await onPinCreated();
     } catch {
       setStatus(tt("docs.pin_error"));

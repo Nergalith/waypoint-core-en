@@ -137,6 +137,19 @@ async def _ingest_field_node(zf: zipfile.ZipFile, manifest: dict[str, Any], file
     saved_photos: list[dict[str, Any]] = []
 
     with get_connection() as conn:
+        existing = conn.execute(
+            "SELECT id FROM lfi_reports WHERE fn_report_id = ?",
+            (fn_report_id,),
+        ).fetchone()
+        if existing:
+            return {
+                "imported": "FIELD_NODE",
+                "skipped": True,
+                "reason": f"Report {fn_report_id} already imported - skipped",
+                "existing_id": existing["id"],
+                "fn_report_id": fn_report_id,
+            }
+
         try:
             cur = conn.execute(
                 """

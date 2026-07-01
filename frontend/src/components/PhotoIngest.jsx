@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useState } from "react";
 import { deletePhoto, uploadPhotos, photoUrl, thumbUrl, createLink } from "../api";
 import { t } from "../i18n";
+import { triggerGlobalRefresh } from "../utils/refreshBus";
 
 export default function PhotoIngest({ lang = "en", onUploaded, photos, recentLfi = [], links = [], currentReportContext, focusedId }) {
   const tt = (key, vars = {}) => t(key, lang, vars);
@@ -17,6 +18,7 @@ export default function PhotoIngest({ lang = "en", onUploaded, photos, recentLfi
     try {
       await deletePhoto(photoId);
       setStatus(tt("photo.delete_success"));
+      triggerGlobalRefresh();
       if (onUploaded) onUploaded();
     } catch {
       setStatus(tt("photo.delete_error"));
@@ -68,6 +70,7 @@ export default function PhotoIngest({ lang = "en", onUploaded, photos, recentLfi
       });
       setLinkStatus(s => ({ ...s, [photoId]: tt("photo.linked_status") }));
       setTimeout(() => setLinkStatus(s => { const n={...s}; delete n[photoId]; return n; }), 2500);
+      triggerGlobalRefresh();
       if (onUploaded) onUploaded();
     } catch {
       setLinkStatus(s => ({ ...s, [photoId]: tt("photo.link_error") }));
@@ -83,6 +86,7 @@ export default function PhotoIngest({ lang = "en", onUploaded, photos, recentLfi
       const res = await uploadPhotos(Array.from(fileList), relatedToNote);
       setStatus(tt("photo.success", {count: res.uploaded}));
       setRelatedToNote(""); // clear after use
+      triggerGlobalRefresh();
       if (onUploaded) onUploaded();
     } catch (e) {
       setStatus(tt("photo.upload_error"));

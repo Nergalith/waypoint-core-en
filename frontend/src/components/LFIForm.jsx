@@ -3,6 +3,7 @@ import ImportBundle from "./ImportBundle.jsx";
 import { createLfi, deleteLfi, downloadReportUrl, exportLfi, finalizeLfi, getLfiPhotos, photoUrl, reopenLfi, thumbUrl, updateLfi } from "../api";
 import { t, translateReportType } from "../i18n";
 import { PIN_CATEGORIES, STATUS_COLORS } from "../pinConstants";
+import { triggerGlobalRefresh } from "../utils/refreshBus";
 
 const BLANK_FORM = {
   report_type: "Observation",
@@ -207,6 +208,7 @@ export default function LFIForm({
     setLockingId(id);
     try {
       await finalizeLfi(id, lang);
+      triggerGlobalRefresh();
       if (onSaved) onSaved();
     } catch {
       setStatus(tt("lfi.finalize_error"));
@@ -241,6 +243,7 @@ export default function LFIForm({
       if (onReportContextChange) onReportContextChange(report.id);
       setStatus(tt("lfi.unlocked_to_edit", { id: report.id }));
       document.getElementById("lfi-form-top")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      triggerGlobalRefresh();
       if (onSaved) onSaved();
     } catch {
       setStatus(tt("lfi.unlock_error"));
@@ -269,6 +272,7 @@ export default function LFIForm({
     try {
       await deleteLfi(id);
       if (editingId === id) cancelEdit();
+      triggerGlobalRefresh();
       if (onSaved) onSaved();
     } catch {
       setStatus(tt("lfi.delete_error"));
@@ -359,6 +363,7 @@ export default function LFIForm({
         setSelectedRel("F");
         if (onReportContextChange && saved?.id) onReportContextChange(saved.id);
       }
+      triggerGlobalRefresh();
       if (onSaved) onSaved();
     } catch {
       setStatus(editingId ? tt("lfi.update_error") : tt("lfi.error"));

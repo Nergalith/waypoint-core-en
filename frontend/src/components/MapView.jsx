@@ -3,6 +3,7 @@ import * as L from "leaflet";
 import { createPin, deletePin, getTracks, importAar } from "../api";
 import { t } from "../i18n";
 import { createPinIcon, DEFAULT_PIN_COLOR, PIN_CATEGORIES, STATUS_COLORS } from "../pinConstants";
+import { triggerGlobalRefresh } from "../utils/refreshBus";
 
 const MAP_DEFAULT_CENTER = [20, 0];
 const INITIAL_ZOOM = 2;
@@ -32,7 +33,7 @@ const TRACK_COLOR_PALETTE = [
   "#818cf8",
 ];
 
-export default function MapView({ lang = "en", lfiList, photoList, documentList, objectList = [], pinList, focusCoordinates, refreshAll, onUseCoordinates, onOpenSource }) {
+export default function MapView({ lang = "en", lfiList, photoList, documentList, objectList = [], pinList, focusCoordinates, refreshAll, reloadToken = 0, onUseCoordinates, onOpenSource }) {
   const tt = (key, vars = {}) => t(key, lang, vars);
 
   const mapRef = useRef(null);
@@ -124,69 +125,88 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   useEffect(() => {
     if (leafletMap.current || !mapRef.current) return;
 
-    if (!L) {
-      setStatus(tt("map.leaflet_error"));
-      return;
-    }
-
-    const map = L.map(mapRef.current, {
-      center: MAP_DEFAULT_CENTER,
-      zoom: INITIAL_ZOOM,
-      zoomControl: true,
-      attributionControl: false,
-      preferCanvas: true,
-      renderer: L.canvas({ padding: 0.25 }),
-    });
-
-    layersRef.current = {
-      country: L.layerGroup().addTo(map),
-      prefectures: L.layerGroup(),
-      roads: L.layerGroup(),
-      rivers: L.layerGroup(),
-      places: L.layerGroup(),
-      borders: L.layerGroup(),
-      pins: L.layerGroup(),
-      tracks: L.layerGroup(),
-    };
-    applyLayerVisibility(map);
-    leafletMap.current = map;
-    addMbtilesBaseLayer(map);
-    loadOfflineMapPackage(map);
-    loadPatrolTracks(map);
-
-    map.on("click", async (e) => {
-      const { lat, lng } = e.latlng;
-      if (pickCoordsModeRef.current) {
-        if (onUseCoordinates) {
-          onUseCoordinates({
-            latitude: Number(lat.toFixed(6)),
-            longitude: Number(lng.toFixed(6)),
-          });
-        }
-        pickCoordsModeRef.current = false;
-        setPickCoordsMode(false);
-        setStatus(tt("map.status_coords_sent", { lat: lat.toFixed(4), lon: lng.toFixed(4) }));
+    let map = null;
+    try {
+      if (!L) {
+        setStatus(tt("map.leaflet_error"));
         return;
       }
 
-      setPinLabel("");
-      setPinCategory("general");
-      setPinStatusColor(DEFAULT_PIN_COLOR);
-      setPendingPin({
-        lat: parseFloat(lat.toFixed(6)),
-        lon: parseFloat(lng.toFixed(6)),
+      map = L.map(mapRef.current, {
+        center: MAP_DEFAULT_CENTER,
+        zoom: INITIAL_ZOOM,
+        zoomControl: true,
+        attributionControl: false,
+        preferCanvas: true,
+        renderer: L.canvas({ padding: 0.25 }),
       });
-    });
 
-    renderPins(allGeoItems);
+      layersRef.current = {
+        country: L.layerGroup().addTo(map),
+        prefectures: L.layerGroup(),
+        roads: L.layerGroup(),
+        rivers: L.layerGroup(),
+        places: L.layerGroup(),
+        borders: L.layerGroup(),
+        pins: L.layerGroup(),
+        tracks: L.layerGroup(),
+      };
+      trackLayersRef.current = {};
+      packageBoundsRef.current = null;
+      applyLayerVisibility(map);
+      leafletMap.current = map;
+      addMbtilesBaseLayer(map);
+      loadOfflineMapPackage(map).catch((err) => {
+        mapLog("offline map package failed", err);
+        setStatus(tt("map.status_package_error"));
+      });
+      loadPatrolTracks(map);
+
+      map.on("click", async (e) => {
+        const { lat, lng } = e.latlng;
+        if (pickCoordsModeRef.current) {
+          if (onUseCoordinates) {
+            onUseCoordinates({
+              latitude: Number(lat.toFixed(6)),
+              longitude: Number(lng.toFixed(6)),
+            });
+          }
+          pickCoordsModeRef.current = false;
+          setPickCoordsMode(false);
+          setStatus(tt("map.status_coords_sent", { lat: lat.toFixed(4), lon: lng.toFixed(4) }));
+          return;
+        }
+
+        setPinLabel("");
+        setPinCategory("general");
+        setPinStatusColor(DEFAULT_PIN_COLOR);
+        setPendingPin({
+          lat: parseFloat(lat.toFixed(6)),
+          lon: parseFloat(lng.toFixed(6)),
+        });
+      });
+
+      renderPins(allGeoItems);
+    } catch (err) {
+      mapLog("map init failed", err);
+      setStatus("Map failed to initialize. Click Refresh or Try again.");
+      if (map) {
+        try { map.remove(); } catch {}
+      }
+      leafletMap.current = null;
+      layersRef.current = { pins: null, country: null, prefectures: null, roads: null, rivers: null, places: null, borders: null, tracks: null };
+      trackLayersRef.current = {};
+    }
 
     return () => {
       if (leafletMap.current) {
-        leafletMap.current.remove();
+        try { leafletMap.current.remove(); } catch {}
         leafletMap.current = null;
       }
+      layersRef.current = { pins: null, country: null, prefectures: null, roads: null, rivers: null, places: null, borders: null, tracks: null };
+      trackLayersRef.current = {};
     };
-  }, []);
+  }, [reloadToken]);
 
   useEffect(() => {
     if (leafletMap.current) {
@@ -208,34 +228,44 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     if (!map || !layersRef.current.tracks) return;
     try {
       const loaded = await getTracks();
-      setTracks(loaded);
-      const colors = ensureCallsignColors(loaded);
-      renderTracks(loaded, map, colors);
+      const safeTracks = Array.isArray(loaded) ? loaded : [];
+      setTracks(safeTracks);
+      const colors = ensureCallsignColors(safeTracks);
+      renderTracks(safeTracks, map, colors);
     } catch (err) {
       mapLog("tracks load failed", err);
+      setTracks([]);
+      renderTracks([], map);
+      setStatus("Patrol tracks could not be loaded. Map remains usable.");
     }
   }
 
   function renderTracks(trackList, map = leafletMap.current, colorMap = callsignColorsRef.current) {
     if (!map || !layersRef.current.tracks) return;
-    layersRef.current.tracks.clearLayers();
-    trackLayersRef.current = {};
-    (trackList || []).forEach((track) => {
-      const callsign = String(track.callsign || "UNKNOWN").toUpperCase();
-      if (!trackLayersRef.current[callsign]) {
-        trackLayersRef.current[callsign] = L.layerGroup().addTo(layersRef.current.tracks);
-      }
-      const coords = track.geojson?.coordinates || [];
-      const latlngs = coords.map((coord) => [coord[1], coord[0]]).filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon));
-      if (latlngs.length < 2) return;
-      L.polyline(latlngs, { color: getCallsignColor(callsign, colorMap), weight: 2.5, opacity: 0.9 })
-        .bindPopup(`<b>${escapeHtml(callsign)}</b><br/>${escapeHtml(track.filename || "AAR import")}<br/>${escapeHtml(track.timestamp || "")}<br/>${Number(track.point_count || latlngs.length)} points`)
-        .addTo(trackLayersRef.current[callsign]);
-    });
-    const nextVisibility = {};
-    Object.keys(trackLayersRef.current).forEach((callsign) => { nextVisibility[callsign] = trackVisibility[callsign] !== false; });
-    setTrackVisibility(nextVisibility);
-    applyLayerVisibility(map);
+    try {
+      layersRef.current.tracks.clearLayers();
+      trackLayersRef.current = {};
+      (Array.isArray(trackList) ? trackList : []).forEach((track) => {
+        const callsign = String(track?.callsign || "UNKNOWN").toUpperCase();
+        if (!trackLayersRef.current[callsign]) {
+          trackLayersRef.current[callsign] = L.layerGroup().addTo(layersRef.current.tracks);
+        }
+        const coords = Array.isArray(track?.geojson?.coordinates) ? track.geojson.coordinates : [];
+        const latlngs = coords.map((coord) => [Number(coord?.[1]), Number(coord?.[0])]).filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon));
+        if (latlngs.length < 2) return;
+        L.polyline(latlngs, { color: getCallsignColor(callsign, colorMap), weight: 2.5, opacity: 0.9 })
+          .bindPopup(`<b>${escapeHtml(callsign)}</b><br/>${escapeHtml(track.filename || "AAR import")}<br/>${escapeHtml(track.timestamp || "")}<br/>${Number(track.point_count || latlngs.length)} points`)
+          .addTo(trackLayersRef.current[callsign]);
+      });
+      const nextVisibility = {};
+      Object.keys(trackLayersRef.current).forEach((callsign) => { nextVisibility[callsign] = trackVisibility[callsign] !== false; });
+      setTrackVisibility(nextVisibility);
+      applyLayerVisibility(map);
+    } catch (err) {
+      mapLog("track render failed", err);
+      trackLayersRef.current = {};
+      setStatus("Patrol tracks could not be drawn. Map remains usable.");
+    }
   }
 
 
@@ -273,6 +303,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   async function handleAarFile(file) {
     const result = await importAar(file);
     await loadPatrolTracks();
+    triggerGlobalRefresh();
     return result;
   }
 
@@ -332,6 +363,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
               btn.onclick = async () => {
                 try {
                   await deletePin(item.sourceId);
+                  triggerGlobalRefresh();
                   if (refreshAll) refreshAll();
                   marker.closePopup();
                 } catch {}
@@ -491,6 +523,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     if (manuals.length === 0) return;
     if (!confirm(tt("map.confirm_delete", { count: manuals.length }))) return;
     Promise.all(manuals.map((p) => deletePin(p.id))).then(() => {
+      triggerGlobalRefresh();
       if (refreshAll) refreshAll();
     });
   }
@@ -508,6 +541,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
         color: pinStatusColor,
       });
       setStatus(tt("map.status_added", { lat: pendingPin.lat.toFixed(4), lon: pendingPin.lon.toFixed(4) }));
+      triggerGlobalRefresh();
       if (refreshAll) await refreshAll();
       setPendingPin(null);
     } catch (err) {
@@ -745,7 +779,13 @@ function addMbtilesBaseLayer(map) {
     tileSize: 256,
     errorTileUrl: "",
   });
-  layer.on("tileerror", () => mapLog("MBTiles tile unavailable"));
+  let tileErrorLogged = false;
+  layer.on("tileerror", () => {
+    if (!tileErrorLogged) {
+      tileErrorLogged = true;
+      mapLog("MBTiles tile unavailable");
+    }
+  });
   layer.addTo(map);
 }
 

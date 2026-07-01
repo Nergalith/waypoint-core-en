@@ -9,12 +9,13 @@ import FieldObjects from "./components/FieldObjects.jsx";
 import Reference from "./components/Reference.jsx";
 import { getDocuments, getFieldObjects, getLfi, getLinks, getPhotos, getPins, getStorageSize, health } from "./api";
 import { DEFAULT_LANG, t } from "./i18n";
+import { onGlobalRefresh } from "./utils/refreshBus";
 
 
 class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, retryNonce: 0 };
   }
 
   static getDerivedStateFromError(error) {
@@ -34,14 +35,14 @@ class ErrorBoundary extends Component {
           <button
             type="button"
             className="small-action"
-            onClick={() => this.setState({ hasError: false, error: null })}
+            onClick={() => this.setState((state) => ({ hasError: false, error: null, retryNonce: state.retryNonce + 1 }))}
           >
             Try again
           </button>
         </div>
       );
     }
-    return this.props.children;
+    return <React.Fragment key={this.state.retryNonce}>{this.props.children}</React.Fragment>;
   }
 }
 
@@ -80,6 +81,7 @@ export default function App() {
   const [storageDisplay, setStorageDisplay] = useState(null);
   const [currentReportContext, setCurrentReportContext] = useState(null); // null = new/clean workspace for photos/docs
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [mapReloadToken, setMapReloadToken] = useState(0);
   const tt = (key, vars = {}) => t(key, lang, vars);
 
   const loadAll = useCallback(async () => {
@@ -114,8 +116,18 @@ export default function App() {
     return () => clearInterval(id);
   }, [loadAll]);  // re-setup if loadAll changes (on lang)
 
+  useEffect(() => {
+    return onGlobalRefresh(async () => {
+      await loadAll();
+      setMapReloadToken((token) => token + 1);
+      const stamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setLastRefresh(stamp);
+    });
+  }, [loadAll]);
+
   async function refreshAll() {
     await loadAll();
+    setMapReloadToken((token) => token + 1);
     const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     setLastRefresh(t);
   }
@@ -265,6 +277,7 @@ export default function App() {
             pinList={pinList}
             focusCoordinates={mapFocus}
             refreshAll={refreshAll}
+            reloadToken={mapReloadToken}
             onUseCoordinates={(coords) => {
               setMapCoordsForLfi(coords);
               setActive("lfi");

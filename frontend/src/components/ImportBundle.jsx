@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { importBundle } from "../api";
+import { triggerGlobalRefresh } from "../utils/refreshBus";
 
 const FORMAT_LABELS = {
   FIELD_NODE: "Field Node Report",
@@ -44,7 +45,10 @@ export default function ImportBundle({ onImportComplete }) {
 
     setLoading(false);
     setResults(nextResults);
-    if (nextResults.some((item) => item.ok) && onImportComplete) await onImportComplete();
+    if (nextResults.some((item) => item.ok)) {
+      triggerGlobalRefresh();
+      if (onImportComplete) await onImportComplete();
+    }
   }
 
   function close() {
@@ -101,7 +105,10 @@ export default function ImportBundle({ onImportComplete }) {
             {result.ok ? (
               <>
                 <strong>{result.file}</strong> - {resultFormat(result.data)}
-                {result.data?.waypoint_report_number && (
+                {result.data?.skipped && (
+                  <span>{" "}- {result.data.reason || "already imported - skipped"}</span>
+                )}
+                {!result.data?.skipped && result.data?.waypoint_report_number && (
                   <span>
                     {" "}- {result.data.waypoint_report_number}, {result.data.photos_saved || 0} photo(s), pin {result.data.pin_created ? "created" : "not created (no GPS)"}
                   </span>
