@@ -518,16 +518,6 @@ footer {
   display: block;
 }
 
-.track-callsign-control input[type="color"] {
-  width: 24px;
-  height: 20px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: transparent;
-  cursor: pointer;
-}
-
 .clue-block span {
   color: var(--soft);
   margin-top: 3px;
@@ -1087,7 +1077,7 @@ footer {
 
 .track-manager-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto auto minmax(140px, auto) auto;
+  grid-template-columns: auto auto minmax(180px, 1fr) auto minmax(140px, auto) auto;
   align-items: center;
   gap: 10px;
   padding: 6px 8px;
@@ -1109,12 +1099,14 @@ footer {
   white-space: nowrap;
 }
 
-.track-color-swatch {
-  width: 14px;
-  height: 14px;
+.track-color-picker {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
   border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.5);
-  display: inline-block;
+  background: none;
+  cursor: pointer;
 }
 
 @media (max-width: 760px) {

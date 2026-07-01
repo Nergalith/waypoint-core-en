@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import * as L from "leaflet";
 import { createPin, deletePin, deleteTrack, getTracks, importAar } from "../api";
 import { t } from "../i18n";
@@ -298,8 +298,16 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     } catch {}
   }
 
-  function setManualCallsignColor(callsign, color) {
-    saveCallsignColors({ ...callsignColorsRef.current, [callsign]: color });
+  function updateCallsignColor(callsign, color) {
+    const normalized = String(callsign || "UNKNOWN").toUpperCase();
+    const next = { ...callsignColorsRef.current, [normalized]: color };
+    saveCallsignColors(next);
+    const group = trackLayersRef.current[normalized];
+    if (group?.eachLayer) {
+      group.eachLayer((layer) => {
+        if (layer.setStyle) layer.setStyle({ color });
+      });
+    }
   }
 
   async function handleAarFile(file) {
@@ -681,23 +689,6 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
             {tt(`map.layer_${key}`)}
           </label>
         ))}
-        {Object.keys(trackLayersRef.current).map((callsign) => (
-          <label key={callsign} className="track-callsign-control">
-            <input
-              type="checkbox"
-              checked={trackVisibility[callsign] !== false}
-              onChange={() => setTrackVisibility((current) => ({ ...current, [callsign]: current[callsign] === false }))}
-            />
-            <span>{callsign}</span>
-            <input
-              type="color"
-              value={getCallsignColor(callsign, callsignColors)}
-              title={`Track color for ${callsign}`}
-              onChange={(event) => setManualCallsignColor(callsign, event.target.value)}
-              onClick={(event) => event.stopPropagation()}
-            />
-          </label>
-        ))}
       </div>
 
       <div className="track-manager">
@@ -718,11 +709,18 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
               const color = getCallsignColor(callsign, callsignColors);
               return (
                 <div className="track-manager-row" key={track.id}>
+                  <input
+                    type="color"
+                    className="track-color-picker"
+                    value={color}
+                    onChange={(event) => updateCallsignColor(callsign, event.target.value)}
+                    title="Change track color"
+                  />
+                  <strong>WAYFINDER</strong>
                   <div className="track-manager-name">
                     <strong>{callsign}</strong>
                     <span>{track.filename || "AAR import"}</span>
                   </div>
-                  <span className="track-color-swatch" style={{ background: color }} title={color} />
                   <span>{Number(track.point_count || track.geojson?.coordinates?.length || 0)} pts</span>
                   <span>{track.timestamp || "unknown time"}</span>
                   <button
