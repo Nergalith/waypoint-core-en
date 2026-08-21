@@ -24,7 +24,7 @@ Purpose
    - Field Objects: create a vehicle or location. Add a position if you want it on the map.
    - Map: confirm report/photo/document/object/manual pins appear and source buttons work where available.
    - Timeline: confirm reports, photos, documents, and event objects appear where available.
-   - Link analysis is provided separately by Nergalith LinkBoard.
+   - Link analysis is provided separately by Nergalith LinkBoard. In Documents, import its handoff ZIP as an independent report or attach it to a field report; Waypoint retains the PDF and editable case.
 
 5. Offline map
    Runtime map files are local GeoJSON under frontend/public/maps/test/.

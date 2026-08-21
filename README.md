@@ -14,7 +14,7 @@ This folder is meant to be copied as a self-contained project sandbox. It is not
 - Photo upload with thumbnail creation and EXIF GPS extraction where available.
 - Document upload and local text extraction for simple files.
 - Field objects for people, vehicles, groups, locations, and events.
-- Existing relationship metadata remains compatible with field records; link analysis is provided separately by Nergalith LinkBoard.
+- Existing relationship metadata remains compatible with field records; link analysis is provided separately by Nergalith LinkBoard. The Documents screen imports a LinkBoard handoff ZIP as either an independent analysis report or a field-report attachment, preserving its PDF and editable `.linkboard.json` case.
 - Timeline and simple text summary tools.
 - Offline test map package under `frontend/public/maps/test/`.
 - Local map pins, source buttons, symbol/category colors, report-position picker, and manual pins.

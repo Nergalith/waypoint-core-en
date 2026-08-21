@@ -122,6 +122,18 @@ export async function uploadDocuments(files, meta = {}) {
   return r.json();
 }
 
+export async function importLinkBoardPackage(file, reportId = "") {
+  const form = new FormData();
+  form.append("file", file);
+  if (reportId) form.append("report_id", reportId);
+  const r = await fetch(`${BASE}/api/documents/linkboard/import`, { method: "POST", body: form });
+  if (!r.ok) throw new Error((await r.json().catch(() => null))?.detail || "LinkBoard import failed");
+  return r.json();
+}
+
+export function documentFileUrl(id) { return `${BASE}/api/documents/${id}/file`; }
+export function linkboardCaseUrl(id) { return `${BASE}/api/documents/${id}/linkboard-case`; }
+
 export async function deleteDocument(id) {
   const r = await fetch(`${BASE}/api/documents/${id}`, { method: "DELETE" });
   if (!r.ok) throw new Error("Delete failed");

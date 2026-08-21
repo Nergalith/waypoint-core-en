@@ -4,6 +4,7 @@ import os
 import shutil
 import json
 import logging
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +28,7 @@ from .database import (
     utc_now_iso,
 )
 from .services.document_processor import extract_document, is_supported_document
+from .services.linkboard_import import LinkBoardImportError, parse_linkboard_handoff
 from .services.photo_processor import compress_for_storage, extract_photo_metadata, is_supported_photo
 from .routers import imports, tiles
 from .services.pdf_generator import (
@@ -679,6 +681,81 @@ def list_documents(limit: int = 100):
     return docs
 
 
+@app.post("/api/documents/linkboard/import", status_code=201)
+async def import_linkboard_package(file: UploadFile = File(...), report_id: str = Form("")):
+    try:
+        package = parse_linkboard_handoff(await file.read())
+    except LinkBoardImportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    manifest, case = package["manifest"], package["case"]
+    case_meta = case.get("case") if isinstance(case.get("case"), dict) else {}
+    report = None
+    with get_connection() as conn:
+        if report_id.strip():
+            report = conn.execute("SELECT id, report_number FROM lfi_reports WHERE id = ?", (report_id.strip(),)).fetchone()
+            if report is None:
+                raise HTTPException(status_code=404, detail="Selected field report was not found.")
+    stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
+    folder = DOCUMENTS_DIR / "linkboard"
+    folder.mkdir(parents=True, exist_ok=True)
+    pdf_name = f"{stamp}_{_safe_storage_name(package['report_name'])}"
+    case_name = f"{stamp}_{_safe_storage_name(package['case_name'])}"
+    pdf_path, case_path = folder / pdf_name, folder / case_name
+    pdf_path.write_bytes(package["pdf"])
+    case_path.write_text(json.dumps(case, ensure_ascii=False, indent=2), encoding="utf-8")
+    title = str(manifest.get("title") or case_meta.get("title") or "LinkBoard Analysis")
+    reference = str(manifest.get("reference") or case_meta.get("reference") or "")
+    analyst = str(manifest.get("analyst") or case_meta.get("analyst") or "")
+    summary = str(case_meta.get("summary") or "")
+    findings = str(case_meta.get("findings") or "")
+    related_to = str(report["report_number"] or f"RPT-{report['id']}") if report else ""
+    clues = {"linkboard": {"format": case.get("format"), "version": case.get("version"), "title": title, "reference": reference, "analyst": analyst, "case_path": str(case_path), "node_count": len(case.get("nodes", [])), "edge_count": len(case.get("edges", []))}}
+    with get_connection() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO documents
+            (original_filename, stored_path, file_type, extraction_status, extraction_detail,
+             extracted_text, extracted_clues, notes, related_to, source_label, uploaded_at)
+            VALUES (?, ?, 'pdf', 'linkboard_report', ?, ?, ?, ?, ?, 'Nergalith LinkBoard', ?)
+            """,
+            (package["report_name"], str(pdf_path), "Independent LinkBoard analysis report", "\n\n".join(part for part in [summary, findings] if part), json.dumps(clues, ensure_ascii=False), f"Reference: {reference or 'not assigned'}; Analyst: {analyst or 'not supplied'}", related_to, utc_now_iso()),
+        )
+        document_id = int(cur.lastrowid)
+        if report:
+            conn.execute(
+                """
+                INSERT INTO links
+                (source_type, source_id, source_label, relationship_type, target_type, target_id, target_label, notes, created_at)
+                VALUES ('field_report', ?, ?, 'related_to', 'document', ?, ?, 'Imported LinkBoard analysis', ?)
+                """,
+                (str(report["id"]), related_to, str(document_id), title, utc_now_iso()),
+            )
+        row = conn.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+    document = row_to_dict(row)
+    document["clues"] = _decode_clues(document.get("extracted_clues"))
+    return {"document": document, "linked_report_id": int(report["id"]) if report else None, "title": title, "reference": reference}
+
+
+@app.get("/api/documents/{document_id}/file")
+def open_document_file(document_id: int):
+    with get_connection() as conn:
+        row = conn.execute("SELECT original_filename, stored_path FROM documents WHERE id = ?", (document_id,)).fetchone()
+    if row is None or not Path(row["stored_path"]).is_file():
+        raise HTTPException(status_code=404, detail="Document file not found.")
+    return FileResponse(row["stored_path"], media_type="application/pdf", filename=row["original_filename"])
+
+
+@app.get("/api/documents/{document_id}/linkboard-case")
+def download_linkboard_case(document_id: int):
+    with get_connection() as conn:
+        row = conn.execute("SELECT extracted_clues FROM documents WHERE id = ?", (document_id,)).fetchone()
+    clues = _decode_clues(row["extracted_clues"] if row else None)
+    case_path = Path(str((clues.get("linkboard") or {}).get("case_path") or ""))
+    if not case_path.is_file():
+        raise HTTPException(status_code=404, detail="Editable LinkBoard case not found.")
+    return FileResponse(str(case_path), media_type="application/json", filename=case_path.name)
+
+
 @app.get("/api/documents/{document_id}")
 def get_document(document_id: int):
     with get_connection() as conn:
@@ -822,6 +899,10 @@ def _decode_clues(raw: str | None) -> dict:
         return json.loads(raw)
     except Exception:
         return {}
+
+
+def _safe_storage_name(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", Path(value).name).strip("._")[:120] or "linkboard-file"
 
 
 # ---------------- Field Objects ----------------

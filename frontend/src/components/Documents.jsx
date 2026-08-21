@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useMemo, useState } from "react";
-import { createDocumentPin, deleteDocument, uploadDocuments } from "../api";
+import { createDocumentPin, deleteDocument, documentFileUrl, importLinkBoardPackage, linkboardCaseUrl, uploadDocuments } from "../api";
 import { t } from "../i18n";
 import { triggerGlobalRefresh } from "../utils/refreshBus";
 
@@ -33,6 +33,8 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
   const [sourceLabel, setSourceLabel] = useState("");
   const [status, setStatus] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [linkboardImporting, setLinkboardImporting] = useState(false);
+  const [linkboardReportId, setLinkboardReportId] = useState(currentReportContext == null ? "" : String(currentReportContext));
   const [fullDoc, setFullDoc] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
@@ -100,6 +102,24 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
     }
   }
 
+  async function handleLinkBoard(file) {
+    if (!file) return;
+    setLinkboardImporting(true);
+    setStatus(tt("docs.linkboard_importing"));
+    try {
+      const result = await importLinkBoardPackage(file, linkboardReportId);
+      setStatus(tt("docs.linkboard_success", { title: result.title }));
+      setViewAll(!linkboardReportId);
+      triggerGlobalRefresh();
+      if (onUploaded) await onUploaded();
+    } catch (error) {
+      setStatus(tt("docs.linkboard_error", { message: error.message }));
+    } finally {
+      setLinkboardImporting(false);
+      setTimeout(() => setStatus(""), 5200);
+    }
+  }
+
   async function createPin(doc, coord) {
     try {
       await createDocumentPin(doc.id, {
@@ -116,6 +136,10 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
   }
 
   useEffect(() => {
+    if (currentReportContext != null) setLinkboardReportId(String(currentReportContext));
+  }, [currentReportContext]);
+
+  useEffect(() => {
     if (!focusedId?.id) return;
     const element = document.getElementById(`source-document-${focusedId.id}`);
     if (!element) return;
@@ -129,6 +153,36 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
     <div className="card">
       <h2>{tt("docs.title")}</h2>
       <p style={{ color: "var(--soft)" }}>{tt("docs.intro")}</p>
+
+      <div className="linkboard-import-panel">
+        <div>
+          <strong>{tt("docs.linkboard_title")}</strong>
+          <div className="linkboard-import-copy">{tt("docs.linkboard_intro")}</div>
+        </div>
+        <div className="linkboard-import-controls">
+          <label>
+            {tt("docs.linkboard_attach_target")}
+            <select value={linkboardReportId} onChange={(event) => setLinkboardReportId(event.target.value)}>
+              <option value="">{tt("docs.linkboard_independent")}</option>
+              {(Array.isArray(lfiList) ? lfiList : []).filter(Boolean).map((report) => (
+                <option key={report.id} value={report.id}>{report.report_number || `RPT-${report.id}`}</option>
+              ))}
+            </select>
+          </label>
+          <label className={`small-action linkboard-import-button ${linkboardImporting ? "disabled" : ""}`}>
+            {linkboardImporting ? tt("docs.linkboard_importing") : tt("docs.linkboard_import")}
+            <input
+              type="file"
+              accept=".zip,application/zip"
+              disabled={linkboardImporting}
+              onChange={(event) => {
+                handleLinkBoard(event.target.files?.[0]);
+                event.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+      </div>
 
       <div className="doc-upload-grid">
         <div>
@@ -204,6 +258,7 @@ export default function Documents({ lang = "en", documents = [], links = [], lfi
 function DocumentCard({ doc, tt, linkedReports = [], onView, onCreatePin, onDelete, isDeleting }) {
   const safeDoc = doc || {};
   const clues = safeDoc.clues || {};
+  const linkboard = clues.linkboard || null;
   const coordinates = Array.isArray(clues.coordinates) ? clues.coordinates.filter(Boolean) : [];
   const keywords = Array.isArray(clues.keywords) ? clues.keywords.filter(Boolean) : [];
   const dates = Array.isArray(clues.dates) ? clues.dates.filter(Boolean) : [];
@@ -233,6 +288,13 @@ function DocumentCard({ doc, tt, linkedReports = [], onView, onCreatePin, onDele
 
       <div className="doc-preview">{safeDoc.text_preview || safeDoc.extracted_text?.substring(0, 220) || tt("docs.no_text")}</div>
 
+      {linkboard && (
+        <div className="linkboard-summary">
+          <strong>{tt("docs.linkboard_badge")}</strong>
+          <span>{linkboard.reference || linkboard.title} · {tt("docs.linkboard_counts", { nodes: linkboard.node_count, links: linkboard.edge_count })}</span>
+        </div>
+      )}
+
       <div className="clue-grid">
         {dates.length > 0 && <ClueBlock label={tt("docs.clue_dates")} value={dates.join(", ")} />}
         {coordinates.length > 0 && <ClueBlock label={tt("docs.clue_coords")} value={coordinates.map(c => c.text).join(" | ")} />}
@@ -252,6 +314,8 @@ function DocumentCard({ doc, tt, linkedReports = [], onView, onCreatePin, onDele
       )}
 
       <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+        {linkboard && <a className="small-action" href={documentFileUrl(safeDoc.id)} target="_blank" rel="noreferrer">{tt("docs.linkboard_open_pdf")}</a>}
+        {linkboard && <a className="small-action" href={linkboardCaseUrl(safeDoc.id)} download>{tt("docs.linkboard_editable_case")}</a>}
         <button className="small-action" title={tt("docs.view_full")} onClick={onView}>{tt("docs.view_full")}</button>
         <button
           className="small-action"
