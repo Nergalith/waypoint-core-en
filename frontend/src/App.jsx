@@ -4,7 +4,6 @@ import PhotoIngest from "./components/PhotoIngest.jsx";
 import MapView from "./components/MapView.jsx";
 import Chronologie from "./components/Chronologie.jsx";
 import Documents from "./components/Documents.jsx";
-import Connections from "./components/Connections.jsx";
 import FieldObjects from "./components/FieldObjects.jsx";
 import Reference from "./components/Reference.jsx";
 import { getDocuments, getFieldObjects, getLfi, getLinks, getPhotos, getPins, getStorageSize, health } from "./api";
@@ -62,7 +61,7 @@ const BLANK_LFI_FORM = {
 };
 
 export default function App() {
-  const [active, setActive] = useState("lfi"); // lfi | photos | map | documents | objects | connections | chronologie | reference
+  const [active, setActive] = useState("lfi"); // lfi | photos | map | documents | objects | chronologie | reference
   const [lfiList, setLfiList] = useState([]);
   const [lfiDraft, setLfiDraft] = useState(BLANK_LFI_FORM);
   const [lfiDraftRel, setLfiDraftRel] = useState("F");
@@ -103,7 +102,7 @@ export default function App() {
       setLinkList(links);
       setObjectList(objects);
       if (storage) setStorageDisplay(storage.display);
-      setSysStatus(h.status === "ok" ? tt("app.status.backend_ok", {lfi: h.counts.lfi, photos: h.counts.photos, pins: h.counts.pins, documents: h.counts.documents || 0, links: h.counts.links || 0, objects: h.counts.objects || 0}) : tt("app.status.backend_error"));
+      setSysStatus(h.status === "ok" ? tt("app.status.backend_ok", {lfi: h.counts.lfi, photos: h.counts.photos, pins: h.counts.pins, documents: h.counts.documents || 0, objects: h.counts.objects || 0}) : tt("app.status.backend_error"));
     } catch (e) {
       setSysStatus(tt("app.status.load_error"));
     }
@@ -207,9 +206,6 @@ export default function App() {
         <button className={active === "objects" ? "active" : ""} onClick={() => setActive("objects")}>
           {tt("nav.objects")}
         </button>
-        <button className={active === "connections" ? "active" : ""} onClick={() => setActive("connections")}>
-          {tt("nav.connections")}
-        </button>
         <button className={active === "chronologie" ? "active" : ""} onClick={() => setActive("chronologie")}>
           {tt("nav.chronologie")}
         </button>
@@ -227,7 +223,7 @@ export default function App() {
           <span className={["photos", "documents"].includes(active) ? "active" : ""}>{tt("workflow.step2")}</span>
           <span className={active === "map" ? "active" : ""}>{tt("workflow.step3")}</span>
           <span className={active === "chronologie" ? "active" : ""}>{tt("workflow.step4")}</span>
-          <span className={["objects", "connections"].includes(active) ? "active" : ""}>{tt("workflow.step5")}</span>
+          <span className={active === "objects" ? "active" : ""}>{tt("workflow.step5")}</span>
         </div>
 
         {active === "lfi" && (
@@ -322,26 +318,6 @@ export default function App() {
           </ErrorBoundary>
         )}
 
-        {active === "connections" && (
-          <ErrorBoundary key="connections" title="Connections failed to load">
-          <Connections
-            lang={lang}
-            links={linkList}
-            lfiList={lfiList}
-            photoList={photoList}
-            documents={documentList}
-            fieldObjects={objectList}
-            pins={pinList}
-            onCreated={refreshAll}
-            onOpenSource={openSource}
-            onShowOnMap={(coords) => {
-              setMapFocus({ ...coords, nonce: Date.now() });
-              setActive("map");
-            }}
-          />
-          </ErrorBoundary>
-        )}
-
         {active === "chronologie" && (
           <ErrorBoundary key="chronologie" title="Timeline failed to load">
           <Chronologie
@@ -363,7 +339,7 @@ export default function App() {
         {/* Always show a tiny combined status bar when not on map */}
         {active !== "map" && active !== "chronologie" && (
           <div className="card" style={{ padding: "10px 14px", fontSize: 13 }}>
-            <strong>{tt("status.terrain")}</strong> {tt("status.lfi_count", {count: lfiList.length})} | {tt("status.photo_count", {count: photoList.length})} | {tt("status.doc_count", {count: documentList.length})} | {tt("status.object_count", {count: objectList.length})} | {tt("status.link_count", {count: linkList.length})} | {tt("status.pin_count", {count: pinList.length})}.
+            <strong>{tt("status.terrain")}</strong> {tt("status.lfi_count", {count: lfiList.length})} | {tt("status.photo_count", {count: photoList.length})} | {tt("status.doc_count", {count: documentList.length})} | {tt("status.object_count", {count: objectList.length})} | {tt("status.pin_count", {count: pinList.length})}.
             {tt("status.map_hint")}
             {storageDisplay != null && (
               <span style={{ marginLeft: 12, color: "var(--muted)", fontSize: 12 }}>

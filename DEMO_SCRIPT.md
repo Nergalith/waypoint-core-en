@@ -7,7 +7,7 @@ Use this script to prove the clean English test workflow without CAR demo data.
    - Confirm the browser opens at http://127.0.0.1:5174.
 
 2. Confirm clean state
-   - Reports, photos, documents, field objects, connections, and timeline should be empty.
+   - Reports, photos, documents, field objects, and timeline should be empty.
 
 3. Create a field report
    - Open Field Reports.
@@ -37,16 +37,10 @@ Use this script to prove the clean English test workflow without CAR demo data.
    - Create one vehicle or location with optional coordinates.
    - Confirm it can be shown on the map if coordinates were added.
 
-8. Create a connection
-   - Open Connections.
-   - Link the report to the object, photo, or document.
-   - Confirm the link appears in the list and graph.
-   - Click a graph node and confirm details appear.
-
-9. Check timeline
+8. Check timeline
    - Open Timeline.
    - Confirm reports, photos, documents, and event objects appear where available.
    - Generate a simple text summary.
 
-10. Stop Waypoint
+9. Stop Waypoint
    - Double-click Close Waypoint Core.vbs.

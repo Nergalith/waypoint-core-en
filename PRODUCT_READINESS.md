@@ -3,7 +3,7 @@
 ## Strengths
 
 - Clean English-only test build with empty local data.
-- Mature MVP workflow: reports, photos, documents, objects, map, timeline, connections, and graph.
+- Mature MVP workflow: reports, photos, documents, objects, map, and timeline. Link analysis is provided separately by Nergalith LinkBoard.
 - Offline-first design with local SQLite storage and local file storage.
 - Lightweight generic test map avoids online map dependencies and avoids heavy CAR demo data.
 - Launch and close scripts use paths relative to the copied folder.
