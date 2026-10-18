@@ -28,6 +28,14 @@ DEFAULT_MAX_ZIP_UNCOMPRESSED_MB = 1000
 DEFAULT_MAX_ZIP_RATIO = 200
 
 
+class ImportFailure(HTTPException):
+    """HTTP error with a stable machine-readable code the frontend can translate."""
+
+    def __init__(self, status_code: int, code: str, detail: str):
+        super().__init__(status_code=status_code, detail=detail)
+        self.code = code
+
+
 def _env_positive_int(name: str, default: int) -> int:
     try:
         return max(1, int(os.getenv(name, str(default))))
@@ -44,7 +52,7 @@ async def _read_upload_limited(file: UploadFile) -> bytes:
         while chunk := await file.read(1024 * 1024):
             total += len(chunk)
             if total > max_bytes:
-                raise HTTPException(status_code=413, detail=f"Import is larger than the {max_mb} MB limit")
+                raise ImportFailure(413, "import_too_large", f"Import is larger than the {max_mb} MB limit")
             chunks.append(chunk)
     finally:
         await file.close()
@@ -55,19 +63,19 @@ def _validate_zip(zf: zipfile.ZipFile) -> None:
     infos = zf.infolist()
     max_files = _env_positive_int("WAYPOINT_MAX_ZIP_FILES", DEFAULT_MAX_ZIP_FILES)
     if len(infos) > max_files:
-        raise HTTPException(status_code=400, detail=f"ZIP contains too many files (maximum {max_files})")
+        raise ImportFailure(400, "zip_too_many_files", f"ZIP contains too many files (maximum {max_files})")
     max_uncompressed = _env_positive_int("WAYPOINT_MAX_ZIP_UNCOMPRESSED_MB", DEFAULT_MAX_ZIP_UNCOMPRESSED_MB) * 1024 * 1024
     total_uncompressed = sum(info.file_size for info in infos)
     if total_uncompressed > max_uncompressed:
-        raise HTTPException(status_code=413, detail="ZIP uncompressed contents are too large")
+        raise ImportFailure(413, "zip_too_large", "ZIP uncompressed contents are too large")
     max_ratio = _env_positive_int("WAYPOINT_MAX_ZIP_RATIO", DEFAULT_MAX_ZIP_RATIO)
     for info in infos:
         normalized = info.filename.replace("\\", "/")
         path = PurePosixPath(normalized)
         if normalized.startswith("/") or re.match(r"^[A-Za-z]:", normalized) or ".." in path.parts:
-            raise HTTPException(status_code=400, detail="ZIP contains an unsafe file path")
+            raise ImportFailure(400, "zip_unsafe_path", "ZIP contains an unsafe file path")
         if info.file_size and (info.file_size / max(info.compress_size, 1)) > max_ratio:
-            raise HTTPException(status_code=400, detail="ZIP compression ratio is unsafe")
+            raise ImportFailure(400, "zip_unsafe_ratio", "ZIP compression ratio is unsafe")
 
 
 @router.post("/api/imports/bundle")
@@ -81,30 +89,32 @@ async def import_bundle(file: UploadFile = File(...)):
     content = await _read_upload_limited(file)
 
     if not filename.lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Only ZIP bundles are supported")
+        raise ImportFailure(400, "zip_only", "Only ZIP bundles are supported")
 
     try:
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
             _validate_zip(zf)
             manifest_name = _find_zip_member(zf, "manifest.json")
             if not manifest_name:
-                raise HTTPException(status_code=400, detail="No manifest.json found - not a valid Nergalith bundle")
+                raise ImportFailure(400, "missing_manifest", "No manifest.json found - not a valid Nergalith bundle")
 
             manifest = _read_json_member(zf, manifest_name)
-            bundle_format = str(manifest.get("format") or manifest.get("report_format") or "UNKNOWN").upper()
+            bundle_format = str(
+                manifest.get("format") or manifest.get("export_format") or manifest.get("report_format") or "UNKNOWN"
+            ).upper()
 
             if bundle_format == "FIELD_NODE":
                 return await _ingest_field_node(zf, manifest, filename)
             if bundle_format in {"WAYFINDER", "AAR"}:
                 return _ingest_wayfinder(zf, filename)
-            raise HTTPException(status_code=400, detail=f"Unknown bundle format: {bundle_format}")
+            raise ImportFailure(400, "unknown_bundle_format", f"Unknown bundle format: {bundle_format}")
     except HTTPException:
         raise
     except zipfile.BadZipFile as exc:
-        raise HTTPException(status_code=400, detail="File is not a valid ZIP") from exc
+        raise ImportFailure(400, "invalid_zip", "File is not a valid ZIP") from exc
     except Exception as exc:
         logger.exception("Bundle import failed")
-        raise HTTPException(status_code=500, detail=f"Import failed: {exc}") from exc
+        raise ImportFailure(500, "import_failed", f"Import failed: {exc}") from exc
 
 
 @router.post("/api/imports/aar")
@@ -122,19 +132,18 @@ async def import_aar(file: UploadFile = File(...)):
         elif filename.endswith(".json") or filename.endswith(".geojson"):
             payload = parse_json(content, original_filename)
         else:
-            raise HTTPException(status_code=400, detail="Unsupported format. Upload .zip, .json, .geojson, .gpx, or .kml")
+            raise ImportFailure(400, "unsupported_format", "Unsupported format. Upload .zip, .json, .geojson, .gpx, or .kml")
         if not payload.get("callsign"):
             apply_wayfinder_callsign(payload["tracks"], original_filename)
     except HTTPException:
         raise
     except Exception as exc:
         logger.error("AAR parse failed: %s", exc)
-        raise HTTPException(status_code=500, detail=f"Failed to parse file: {exc}") from exc
+        raise ImportFailure(500, "parse_failed", f"Failed to parse file: {exc}") from exc
 
-    payload["content_hash"] = hashlib.sha256(content).hexdigest()
     result = _save_import(payload, original_filename)
     if not result:
-        raise HTTPException(status_code=400, detail="No tracks or pins found in file")
+        raise ImportFailure(400, "no_tracks_or_pins", "No tracks or pins found in file")
     return result
 
 
@@ -172,7 +181,7 @@ def delete_track(track_id: int):
 async def _ingest_field_node(zf: zipfile.ZipFile, manifest: dict[str, Any], filename: str) -> dict[str, Any]:
     report_name = _find_zip_member(zf, "report.json")
     if not report_name:
-        raise HTTPException(status_code=400, detail="No report.json found in Field Node bundle")
+        raise ImportFailure(400, "missing_report", "No report.json found in Field Node bundle")
 
     report_data = _read_json_member(zf, report_name)
     fn_report_id = str(report_data.get("report_id") or manifest.get("report_id") or "UNKNOWN")
@@ -271,7 +280,7 @@ async def _ingest_field_node(zf: zipfile.ZipFile, manifest: dict[str, Any], file
             report = row_to_dict(conn.execute("SELECT * FROM lfi_reports WHERE id = ?", (lfi_id,)).fetchone())
         except Exception as exc:
             logger.exception("Field Node DB insert failed")
-            raise HTTPException(status_code=500, detail=f"Database error: {exc}") from exc
+            raise ImportFailure(500, "database_error", f"Database error: {exc}") from exc
 
     return {
         "imported": "FIELD_NODE",
@@ -286,22 +295,7 @@ async def _ingest_field_node(zf: zipfile.ZipFile, manifest: dict[str, Any], file
 
 
 def _ingest_wayfinder(zf: zipfile.ZipFile, filename: str) -> dict[str, Any]:
-    payload = _empty_payload()
-    for name in zf.namelist():
-        lower = name.lower()
-        if os.path.basename(lower) == "manifest.json":
-            try:
-                manifest = _read_json_member(zf, name)
-                _merge_metadata(payload, manifest)
-            except HTTPException:
-                pass
-            continue
-        if lower.endswith(".gpx"):
-            _merge_payload(payload, parse_gpx(zf.read(name), name))
-        elif lower.endswith(".kml"):
-            _merge_payload(payload, parse_kml(zf.read(name), name))
-        elif lower.endswith(".json") or lower.endswith(".geojson"):
-            _merge_payload(payload, parse_json(zf.read(name), name))
+    payload = _parse_zip_members(zf)
     for track in payload["tracks"]:
         track.setdefault("map_package_name", payload.get("map_package_name", ""))
         if payload.get("callsign"):
@@ -310,7 +304,7 @@ def _ingest_wayfinder(zf: zipfile.ZipFile, filename: str) -> dict[str, Any]:
         apply_wayfinder_callsign(payload["tracks"], filename)
     result = _save_import(payload, filename, import_label="WAYFINDER")
     if not result:
-        raise HTTPException(status_code=400, detail="No tracks or pins found in Wayfinder bundle")
+        raise ImportFailure(400, "no_tracks_or_pins", "No tracks or pins found in Wayfinder bundle")
     return result
 
 
@@ -323,17 +317,18 @@ def _save_import(payload: dict[str, Any], filename: str, import_label: str | Non
     export_id = str(payload.get("export_id") or "").strip()
     device_id = str(payload.get("device_id") or "").strip()
     import_type = str(import_label or payload.get("format") or "AAR").upper()
-    content_hash = str(payload.get("content_hash") or "")
+    content_hash = _patrol_fingerprint(tracks, pins)
     with closing(sqlite3.connect(DB_PATH)) as conn, conn:
-        if import_type == "WAYFINDER" and export_id and device_id:
+        # Same patrol = same export+device, or the same track geometry in any format (GPX, KML, JSON, ZIP).
+        if export_id and device_id:
             existing = conn.execute(
-                "SELECT id FROM import_receipts WHERE import_type='WAYFINDER' AND export_id=? AND device_id=?",
-                (export_id, device_id),
+                "SELECT id FROM import_receipts WHERE (export_id=? AND device_id=?) OR content_hash=?",
+                (export_id, device_id, content_hash),
             ).fetchone()
         else:
             existing = conn.execute(
-                "SELECT id FROM import_receipts WHERE import_type=? AND (content_hash=? OR filename=?)",
-                (import_type, content_hash, filename),
+                "SELECT id FROM import_receipts WHERE content_hash=?",
+                (content_hash,),
             ).fetchone()
         if existing:
             return {
@@ -407,6 +402,16 @@ def _save_import(payload: dict[str, Any], filename: str, import_label: str | Non
             for track in tracks
         },
     }
+
+def _patrol_fingerprint(tracks: list[dict[str, Any]], pins: list[dict[str, Any]]) -> str:
+    """Hash of the patrol geometry so one patrol imported as GPX, JSON or ZIP is recognised as the same."""
+    if tracks:
+        points = [coord for track in tracks for coord in track["geojson"].get("coordinates", [])]
+    else:
+        points = [[pin["longitude"], pin["latitude"]] for pin in pins]
+    canonical = ";".join(f"{float(lon):.7f},{float(lat):.7f}" for lon, lat, *_ in points)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
 
 def _save_field_node_photo(conn, zf: zipfile.ZipFile, photo_filename: str, lfi_id: int, report_number: str, timestamp: str, caption: str = "") -> dict[str, Any] | None:
     member = _find_zip_member(zf, photo_filename)
@@ -510,7 +515,7 @@ def _merge_metadata(payload: dict[str, Any], data: dict[str, Any]) -> None:
     payload["device_id"] = str(data.get("device_id") or data.get("device") or payload.get("device_id") or "").strip()
     payload["export_id"] = str(data.get("export_id") or payload.get("export_id") or "").strip()
     payload["map_package_name"] = _map_package_name(data) or payload.get("map_package_name", "")
-    if str(data.get("format") or "").upper() == "WAYFINDER":
+    if _is_wayfinder(data):
         payload["format"] = "WAYFINDER"
 
 
@@ -525,25 +530,35 @@ def _merge_payload(target: dict[str, Any], source: dict[str, Any]) -> None:
         target["format"] = "WAYFINDER"
 
 
-def parse_zip(content: bytes) -> dict[str, Any]:
+def _parse_zip_members(zf: zipfile.ZipFile) -> dict[str, Any]:
+    """Merge every track file in a ZIP. A native Wayfinder JSON wins over its GPX/KML copies."""
     payload = _empty_payload()
+    json_payloads: list[dict[str, Any]] = []
+    xml_payloads: list[dict[str, Any]] = []
+    for name in zf.namelist():
+        lower = name.lower()
+        if os.path.basename(lower) == "manifest.json":
+            try:
+                _merge_metadata(payload, _read_json_member(zf, name))
+            except HTTPException:
+                pass
+            continue
+        if lower.endswith(".gpx"):
+            xml_payloads.append(parse_gpx(zf.read(name), name))
+        elif lower.endswith(".kml"):
+            xml_payloads.append(parse_kml(zf.read(name), name))
+        elif lower.endswith(".json") or lower.endswith(".geojson"):
+            json_payloads.append(parse_json(zf.read(name), name))
+    has_native = any(item.get("format") == "WAYFINDER" for item in json_payloads)
+    for item in json_payloads + ([] if has_native else xml_payloads):
+        _merge_payload(payload, item)
+    return payload
+
+
+def parse_zip(content: bytes) -> dict[str, Any]:
     with zipfile.ZipFile(io.BytesIO(content)) as zf:
         _validate_zip(zf)
-        for name in zf.namelist():
-            data = zf.read(name)
-            lower = name.lower()
-            if os.path.basename(lower) == "manifest.json":
-                try:
-                    _merge_metadata(payload, json.loads(data.decode("utf-8-sig")))
-                except Exception:
-                    pass
-                continue
-            if lower.endswith(".gpx"):
-                _merge_payload(payload, parse_gpx(data, name))
-            elif lower.endswith(".kml"):
-                _merge_payload(payload, parse_kml(data, name))
-            elif lower.endswith(".json") or lower.endswith(".geojson"):
-                _merge_payload(payload, parse_json(data, name))
+        payload = _parse_zip_members(zf)
     for track in payload["tracks"]:
         track.setdefault("map_package_name", payload.get("map_package_name", ""))
         if payload.get("callsign"):
@@ -673,9 +688,14 @@ def parse_json(data: bytes, filename: str) -> dict[str, Any]:
         raise ValueError("JSON import must contain an object")
     payload = _empty_payload()
     _merge_metadata(payload, parsed)
-    native_wayfinder = str(parsed.get("format") or "").upper() == "WAYFINDER"
-    if native_wayfinder and int(parsed.get("schema_version", 1)) != 1:
-        raise ValueError("Unsupported Wayfinder schema_version")
+    native_wayfinder = _is_wayfinder(parsed)
+    if native_wayfinder:
+        try:
+            schema_version = int(parsed.get("schema_version", 1))
+        except (TypeError, ValueError):
+            schema_version = None
+        if schema_version != 1:
+            raise ImportFailure(400, "unsupported_schema", "Unsupported Wayfinder schema_version")
     payload["format"] = "WAYFINDER" if native_wayfinder else "GEOJSON"
     coords: list[list[float]] = []
     if native_wayfinder:
@@ -713,6 +733,11 @@ def parse_json(data: bytes, filename: str) -> dict[str, Any]:
     return payload
 
 
+def _is_wayfinder(data: dict[str, Any]) -> bool:
+    # Wayfinder 0.4.x writes "export_format"; older or hand-made files may use "format".
+    return str(data.get("export_format") or data.get("format") or "").upper() == "WAYFINDER"
+
+
 def _map_package_name(data: dict[str, Any]) -> str:
     package = data.get("map_package")
     if isinstance(package, dict):
@@ -735,9 +760,9 @@ def _read_json_member(zf: zipfile.ZipFile, name: str) -> dict[str, Any]:
         data = zf.read(name).decode("utf-8-sig")
         parsed = json.loads(data)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON in {Path(name).name}") from exc
+        raise ImportFailure(400, "invalid_json", f"Invalid JSON in {Path(name).name}") from exc
     if not isinstance(parsed, dict):
-        raise HTTPException(status_code=400, detail=f"{Path(name).name} must contain a JSON object")
+        raise ImportFailure(400, "invalid_json", f"{Path(name).name} must contain a JSON object")
     return parsed
 
 

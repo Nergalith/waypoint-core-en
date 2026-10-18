@@ -23,24 +23,45 @@ def zip_bytes(entries: dict[str, bytes | str]) -> bytes:
 
 
 def wayfinder_json() -> dict:
+    """Same shape as a real Wayfinder 0.4.13 export (export_format, recorded_at, full map_package)."""
     return {
-        "format": "WAYFINDER",
-        "schema_version": 1,
+        "export_id": "Wayfinder_EAGLE-2_20261018_020000",
         "callsign": "EAGLE-2",
         "device_id": "device-007",
-        "export_id": "export-abc",
-        "map_package": {"name": "Nergalith Wayfinder - Sindh OSM"},
-        "track_points": [
-            {"latitude": 25.0, "longitude": 67.0, "timestamp": "2026-10-18T01:00:00Z"},
-            {"latitude": 25.1, "longitude": 67.1, "timestamp": "2026-10-18T01:10:00Z"},
-        ],
+        "timestamp": "2026-10-18T02:00:00.000Z",
+        "export_format": "WAYFINDER",
+        "schema_version": 1,
+        "app_version": "0.4.13",
+        "symbology_version": "1.0",
+        "map_package": {
+            "path": "/data/user/0/com.nergalithwayfinder/files/tiles/sideload/sindh.mbtiles",
+            "name": "Nergalith Wayfinder - Sindh OSM",
+            "attribution": "(c) OpenStreetMap contributors",
+            "minzoom": 5,
+            "maxzoom": 14,
+            "bounds": [66.5, 23.5, 71.5, 28.5],
+        },
         "pins": [
-            {"id": "pin-1", "latitude": 25.5, "longitude": 67.5, "label": "Water point", "category": "supply"},
+            {"id": 1, "latitude": 25.5, "longitude": 67.5, "label": "Water point", "category": "supply"},
+        ],
+        "track_points": [
+            {"id": 1, "latitude": 25.0, "longitude": 67.0, "recorded_at": "2026-10-18T01:00:00Z", "low_accuracy": False},
+            {"id": 2, "latitude": 25.1, "longitude": 67.1, "recorded_at": "2026-10-18T01:10:00Z", "low_accuracy": False},
         ],
         "patrol_sessions": [
-            {"session_id": "session-1", "started_at": "2026-10-18T01:00:00Z", "ended_at": "2026-10-18T02:00:00Z"},
+            {"id": 1, "started_at": "2026-10-18T01:00:00Z", "ended_at": "2026-10-18T02:00:00Z"},
         ],
+        "route": {"id": "active", "name": "", "pin_ids": [], "created_at": ""},
     }
+
+
+def wayfinder_gpx() -> bytes:
+    """GPX copy of wayfinder_json(), as Wayfinder writes next to the JSON."""
+    return b"""<?xml version='1.0'?><gpx version='1.1' xmlns='http://www.topografix.com/GPX/1/1'>
+      <wpt lat='25.5' lon='67.5'><name>Water point</name></wpt>
+      <trk><name>Movement Track</name><trkseg>
+        <trkpt lat='25.0' lon='67.0'/><trkpt lat='25.1' lon='67.1'/>
+      </trkseg></trk></gpx>"""
 
 
 class HardenedImporterTests(unittest.TestCase):
@@ -77,7 +98,7 @@ class HardenedImporterTests(unittest.TestCase):
         tracks = self.client.get("/api/tracks").json()
         self.assertEqual(tracks[0]["callsign"], "EAGLE-2")
         self.assertEqual(tracks[0]["device_id"], "device-007")
-        self.assertEqual(tracks[0]["export_id"], "export-abc")
+        self.assertEqual(tracks[0]["export_id"], "Wayfinder_EAGLE-2_20261018_020000")
         self.assertEqual(tracks[0]["map_package_name"], "Nergalith Wayfinder - Sindh OSM")
         self.assertEqual(len(tracks[0]["geojson"]["coordinates"]), 2)
         self.assertEqual(len(tracks[0]["patrol_sessions"]), 1)
@@ -96,6 +117,55 @@ class HardenedImporterTests(unittest.TestCase):
         self.assertIn("already imported", second.json()["reason"].lower())
         self.assertEqual(len(self.db_rows("SELECT id FROM patrol_tracks")), 1)
         self.assertEqual(len(self.db_rows("SELECT id FROM map_pins WHERE source='wayfinder'")), 1)
+
+    def test_wayfinder_zip_uses_native_json_and_ignores_gpx_copy(self):
+        bundle = zip_bytes({
+            "manifest.json": json.dumps({"export_format": "WAYFINDER"}),
+            "patrol.json": json.dumps(wayfinder_json()),
+            "patrol.gpx": wayfinder_gpx(),
+        })
+        response = self.client.post("/api/imports/bundle", files={"file": ("patrol.zip", bundle, "application/zip")})
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["track_count"], 1)
+        self.assertEqual(response.json()["pin_count"], 1)
+        self.assertEqual(response.json()["session_count"], 1)
+        self.assertEqual(len(self.db_rows("SELECT id FROM patrol_tracks")), 1)
+        self.assertEqual(len(self.db_rows("SELECT id FROM map_pins")), 1)
+
+    def test_same_patrol_as_gpx_then_zip_is_skipped(self):
+        first = self.client.post("/api/imports/aar", files={"file": ("Wayfinder_EAGLE-2.gpx", wayfinder_gpx(), "application/gpx+xml")})
+        bundle = zip_bytes({
+            "manifest.json": json.dumps({"export_format": "WAYFINDER"}),
+            "patrol.json": json.dumps(wayfinder_json()),
+            "patrol.gpx": wayfinder_gpx(),
+        })
+        second = self.client.post("/api/imports/bundle", files={"file": ("patrol.zip", bundle, "application/zip")})
+
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertTrue(second.json()["skipped"])
+        self.assertEqual(len(self.db_rows("SELECT id FROM patrol_tracks")), 1)
+
+    def test_different_files_with_same_name_are_both_imported(self):
+        gpx_template = "<?xml version='1.0'?><gpx version='1.1'><trk><trkseg>{}</trkseg></trk></gpx>"
+        first_gpx = gpx_template.format("<trkpt lat='25.0' lon='67.0'/><trkpt lat='25.1' lon='67.1'/>").encode()
+        second_gpx = gpx_template.format("<trkpt lat='26.0' lon='68.0'/><trkpt lat='26.1' lon='68.1'/>").encode()
+        first = self.client.post("/api/imports/aar", files={"file": ("track.gpx", first_gpx, "application/gpx+xml")})
+        second = self.client.post("/api/imports/aar", files={"file": ("track.gpx", second_gpx, "application/gpx+xml")})
+
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertNotIn("skipped", second.json())
+        self.assertEqual(len(self.db_rows("SELECT id FROM patrol_tracks")), 2)
+
+    def test_bad_wayfinder_schema_version_is_rejected_with_code(self):
+        data = wayfinder_json()
+        data["schema_version"] = "v2"
+        response = self.client.post("/api/imports/aar", files={"file": ("patrol.json", json.dumps(data).encode(), "application/json")})
+
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertEqual(response.json()["code"], "unsupported_schema")
 
     def test_gpx_waypoints_are_pins_not_track_points(self):
         gpx = b"""<?xml version='1.0'?><gpx version='1.1'>
@@ -169,6 +239,7 @@ class HardenedImporterTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("unsafe", response.json()["detail"].lower())
+        self.assertEqual(response.json()["code"], "zip_unsafe_path")
 
 
 if __name__ == "__main__":
