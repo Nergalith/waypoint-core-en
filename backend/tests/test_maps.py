@@ -1,6 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from backend.app.routers import tiles
@@ -11,7 +12,7 @@ PNG_TILE = b"\x89PNG\r\n\x1a\nfixture"
 
 def create_mbtiles(path: Path, *, name="Fixture Map", scheme="tms", tile_format="png") -> Path:
     """Create the tiny MBTiles fixture used by the map API tests."""
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection:
         connection.executescript(
             """
             CREATE TABLE metadata (name TEXT, value TEXT);
@@ -37,6 +38,7 @@ def create_mbtiles(path: Path, *, name="Fixture Map", scheme="tms", tile_format=
         )
         # XYZ y=0 is stored at TMS row 1 when z=1.
         connection.execute("INSERT INTO tiles VALUES (1, 0, 1, ?)", (PNG_TILE,))
+        connection.commit()
     return path
 
 
@@ -75,8 +77,9 @@ class MapApiTests(unittest.TestCase):
 
     def test_xyz_jpeg_tiles_keep_the_requested_row_and_content_type(self):
         path = create_mbtiles(tiles.MAPS_DIR / "photo-map.mbtiles", scheme="xyz", tile_format="jpg")
-        with sqlite3.connect(path) as connection:
+        with closing(sqlite3.connect(path)) as connection:
             connection.execute("UPDATE tiles SET tile_data = ?", (b"\xff\xd8fixture\xff\xd9",))
+            connection.commit()
         tiles.scan_maps()
 
         response = tiles.get_tile("photo-map", 1, 0, 1)

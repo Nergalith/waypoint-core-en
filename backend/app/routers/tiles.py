@@ -4,6 +4,7 @@ import hashlib
 import os
 import re
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from threading import RLock
 
@@ -14,6 +15,7 @@ router = APIRouter()
 ROOT_DIR = Path(__file__).resolve().parents[3]
 MAPS_DIR = Path(os.getenv("WAYPOINT_MAPS_DIR", str(ROOT_DIR / "backend" / "maps")))
 SUPPORTED_FORMATS = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}
+DEFAULT_MAX_MAP_MB = 2048
 
 _maps: dict[str, dict] = {}
 _lock = RLock()
@@ -26,7 +28,7 @@ def _slug(value: str) -> str:
 
 def _read_metadata(path: Path) -> dict:
     try:
-        with sqlite3.connect(path) as conn:
+        with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)) as conn:
             tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             if not {"metadata", "tiles"}.issubset(tables):
                 raise ValueError("Not a valid MBTiles file")
@@ -118,20 +120,33 @@ async def add_map(file: UploadFile = File(...)):
         destination = MAPS_DIR / f"{safe_stem}-{counter}.mbtiles"
         counter += 1
     temporary = destination.with_suffix(".uploading")
+    try:
+        max_map_mb = max(1, int(os.getenv("WAYPOINT_MAX_MAP_MB", str(DEFAULT_MAX_MAP_MB))))
+    except ValueError:
+        max_map_mb = DEFAULT_MAX_MAP_MB
+    max_bytes = max_map_mb * 1024 * 1024
 
     try:
+        bytes_written = 0
         with temporary.open("wb") as output:
             while chunk := await file.read(1024 * 1024):
+                bytes_written += len(chunk)
+                if bytes_written > max_bytes:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=f"Map is larger than the {max_map_mb} MB limit",
+                    )
                 output.write(chunk)
         _read_metadata(temporary)
         os.replace(temporary, destination)
+    except HTTPException:
+        raise
     except ValueError as exc:
-        temporary.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OSError as exc:
-        temporary.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail="Could not copy the map file") from exc
     finally:
+        temporary.unlink(missing_ok=True)
         await file.close()
 
     maps = scan_maps()
@@ -146,7 +161,7 @@ def _tile_response(item: dict, z: int, x: int, y: int) -> Response:
         raise HTTPException(status_code=404, detail="Tile not found")
     stored_y = y if item["scheme"] == "xyz" else (2**z - 1) - y
     try:
-        with sqlite3.connect(item["path"]) as conn:
+        with closing(sqlite3.connect(f"file:{item['path']}?mode=ro", uri=True, check_same_thread=False)) as conn:
             row = conn.execute(
                 "SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?",
                 (z, x, stored_y),
@@ -155,7 +170,11 @@ def _tile_response(item: dict, z: int, x: int, y: int) -> Response:
         raise HTTPException(status_code=500, detail="Could not read map tiles") from exc
     if row is None:
         raise HTTPException(status_code=404, detail="Tile not found")
-    return Response(content=row[0], media_type=SUPPORTED_FORMATS[item["format"]])
+    return Response(
+        content=row[0],
+        media_type=SUPPORTED_FORMATS[item["format"]],
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @router.get("/api/tiles/{map_id}/{z}/{x}/{y}")
@@ -165,7 +184,8 @@ def get_tile(map_id: str, z: int, x: int, y: int):
 
 @router.get("/api/mbtiles/{z}/{x}/{y}")
 def get_legacy_tile(z: int, x: int, y: int):
-    maps = scan_maps()
-    if not maps:
+    with _lock:
+        item = next(iter(_maps.values()), None)
+    if item is None:
         raise HTTPException(status_code=404, detail="No MBTiles map loaded")
-    return _tile_response(_get_map(maps[0]["id"]), z, x, y)
+    return _tile_response(item, z, x, y)

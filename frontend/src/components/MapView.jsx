@@ -241,21 +241,11 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       setTracks(safeTracks);
       const colors = ensureTrackColors(safeTracks);
       renderTracks(safeTracks, map, colors);
-      const requestedMapName = safeTracks.find((track) => track?.map_package_name)?.map_package_name || "";
-      const choice = chooseMapForTrack(mapsRef.current, requestedMapName, safeLocalStorageGet(LAST_MAP_STORAGE_KEY));
-      if (choice.map) selectBaseMap(choice.map, map, false);
-      if (choice.missingRequestedMap) {
-        setMapNotice("Map for this patrol not found. Add map.");
-      } else if (choice.map) {
-        setMapNotice("");
-      }
-      const bounds = collectTrackBounds();
-      if (bounds?.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
     } catch (err) {
       mapLog("tracks load failed", err);
       setTracks([]);
       renderTracks([], map);
-      setStatus("Patrol tracks could not be loaded. Map remains usable.");
+      setStatus(tt("map.status_tracks_load_error"));
     }
   }
 
@@ -266,7 +256,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       setMaps(mapsRef.current);
       if (mapsRef.current.length === 0) {
         setSelectedMapId("");
-        setMapNotice("No map installed. Add map.");
+        setMapNotice(tt("map.notice_none"));
         return;
       }
       const choice = chooseMapForTrack(mapsRef.current, "", safeLocalStorageGet(LAST_MAP_STORAGE_KEY));
@@ -274,7 +264,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     } catch {
       mapsRef.current = [];
       setMaps([]);
-      setMapNotice("No map installed. Add map.");
+      setMapNotice(tt("map.notice_none"));
     }
   }
 
@@ -282,8 +272,9 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
     if (!map || !mapInfo) return;
     if (baseMapLayerRef.current) map.removeLayer(baseMapLayerRef.current);
     baseMapLayerRef.current = L.tileLayer(mapTileUrl(mapInfo.id), {
-      minZoom: mapInfo.minzoom ?? 0,
-      maxZoom: mapInfo.maxzoom ?? 18,
+      minNativeZoom: mapInfo.minzoom ?? 0,
+      maxNativeZoom: mapInfo.maxzoom ?? 18,
+      maxZoom: 19,
       tileSize: 256,
       errorTileUrl: "",
     }).addTo(map);
@@ -300,9 +291,9 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       await loadAvailableMaps();
       const installed = mapsRef.current.find((item) => item.id === created.id) || created;
       selectBaseMap(installed);
-      setStatus(`Map added: ${installed.name}`);
+      setStatus(tt("map.added", { name: installed.name }));
     } catch (error) {
-      setMapNotice(error.message || "Could not add map.");
+      setMapNotice(tt("map.add_error", { message: error.message || tt("map.add_error_unknown") }));
     } finally {
       setAddingMap(false);
     }
@@ -330,6 +321,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
         const polyline = L.polyline(latlngs, { color: getTrackColor(track, index, colorMap), weight: 2.5, opacity: 0.9 })
           .bindPopup(`<b>${escapeHtml(callsign)}</b><br/>${escapeHtml(track.filename || "AAR import")}<br/>${escapeHtml(track.timestamp || "")}<br/>${Number(track.point_count || latlngs.length)} points`)
           .addTo(group);
+        polyline.on("click", () => focusTrack(track, index));
         trackLayersRef.current[trackId] = group;
         trackPolylinesRef.current[trackId] = polyline;
       });
@@ -341,8 +333,30 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       mapLog("track render failed", err);
       trackLayersRef.current = {};
       trackPolylinesRef.current = {};
-      setStatus("Patrol tracks could not be drawn. Map remains usable.");
+      setStatus(tt("map.status_tracks_draw_error"));
     }
+  }
+
+  function focusTrack(track, index = 0) {
+    const map = leafletMap.current;
+    if (!map || !track) return;
+    const choice = chooseMapForTrack(
+      mapsRef.current,
+      track.map_package_name || "",
+      safeLocalStorageGet(LAST_MAP_STORAGE_KEY),
+    );
+    if (choice.map) selectBaseMap(choice.map, map, false);
+    if (choice.missingRequestedMap) {
+      setMapNotice(tt("map.notice_missing_patrol"));
+    } else if (choice.map) {
+      setMapNotice("");
+    } else {
+      setMapNotice(tt("map.notice_none"));
+    }
+    const polyline = trackPolylinesRef.current[getTrackId(track, index)];
+    const bounds = polyline?.getBounds?.();
+    if (bounds?.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+    setStatus(tt("map.status_track_focused", { callsign: String(track.callsign || "UNKNOWN").toUpperCase() }));
   }
 
 
@@ -798,18 +812,18 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
 
       <div className="map-picker">
         <label>
-          <span>Offline map</span>
+          <span>{tt("map.offline_label")}</span>
           <select
             value={selectedMapId}
             disabled={maps.length === 0}
             onChange={(event) => selectBaseMap(maps.find((item) => item.id === event.target.value))}
           >
-            {maps.length === 0 && <option value="">No maps installed</option>}
+            {maps.length === 0 && <option value="">{tt("map.no_maps_option")}</option>}
             {maps.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </label>
         <label className="add-map-button">
-          {addingMap ? "Adding map..." : "+ Add map"}
+          {addingMap ? tt("map.adding") : tt("map.add")}
           <input
             type="file"
             accept=".mbtiles"
@@ -870,6 +884,13 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
                   </div>
                   <span>{Number(track.point_count || track.geojson?.coordinates?.length || 0)} pts</span>
                   <span>{track.timestamp || "unknown time"}</span>
+                  <button
+                    type="button"
+                    className="small-action"
+                    onClick={() => focusTrack(track, index)}
+                  >
+                    {tt("map.open_track")}
+                  </button>
                   <button
                     type="button"
                     className="small-action"
