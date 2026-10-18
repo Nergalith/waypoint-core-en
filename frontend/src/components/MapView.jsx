@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as L from "leaflet";
-import { createPin, deletePin, deleteTrack, getTracks, importAar } from "../api";
+import { addMap, createPin, deletePin, deleteTrack, getMaps, getTracks, importAar, mapTileUrl } from "../api";
 import { t } from "../i18n";
 import { createPinIcon, DEFAULT_PIN_COLOR, PIN_CATEGORIES, STATUS_COLORS } from "../pinConstants";
 import { triggerGlobalRefresh } from "../utils/refreshBus";
+import { chooseMapForTrack, LAST_MAP_STORAGE_KEY } from "../utils/mapSelection";
 
 const MAP_DEFAULT_CENTER = [20, 0];
 const INITIAL_ZOOM = 2;
@@ -45,6 +46,8 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   const trackVisibilityRef = useRef({});
   const layerVisibilityRef = useRef(DEFAULT_LAYER_VISIBILITY);
   const packageBoundsRef = useRef(null);
+  const mapsRef = useRef([]);
+  const baseMapLayerRef = useRef(null);
   const pickCoordsModeRef = useRef(false);
   const [status, setStatus] = useState(tt("map.status_ready"));
   const [showHelp, setShowHelp] = useState(false);
@@ -61,6 +64,10 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   const [showAarImport, setShowAarImport] = useState(false);
   const [showTrackManager, setShowTrackManager] = useState(false);
   const [deletingTrackId, setDeletingTrackId] = useState(null);
+  const [maps, setMaps] = useState([]);
+  const [selectedMapId, setSelectedMapId] = useState("");
+  const [mapNotice, setMapNotice] = useState("");
+  const [addingMap, setAddingMap] = useState(false);
 
   useEffect(() => {
     pickCoordsModeRef.current = pickCoordsMode;
@@ -161,13 +168,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       packageBoundsRef.current = null;
       applyLayerVisibility(map);
       leafletMap.current = map;
-      addMbtilesBaseLayer(map);
-      loadOfflineMapPackage(map).catch((err) => {
-        mapLog("offline map package failed", err);
-        setStatus(tt("map.status_package_error"));
-      });
-      loadPatrolTracks(map);
-
+      loadAvailableMaps(map).then(() => loadPatrolTracks(map));
       map.on("click", async (e) => {
         const { lat, lng } = e.latlng;
         if (pickCoordsModeRef.current) {
@@ -240,11 +241,70 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       setTracks(safeTracks);
       const colors = ensureTrackColors(safeTracks);
       renderTracks(safeTracks, map, colors);
+      const requestedMapName = safeTracks.find((track) => track?.map_package_name)?.map_package_name || "";
+      const choice = chooseMapForTrack(mapsRef.current, requestedMapName, safeLocalStorageGet(LAST_MAP_STORAGE_KEY));
+      if (choice.map) selectBaseMap(choice.map, map, false);
+      if (choice.missingRequestedMap) {
+        setMapNotice("Map for this patrol not found. Add map.");
+      } else if (choice.map) {
+        setMapNotice("");
+      }
+      const bounds = collectTrackBounds();
+      if (bounds?.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
     } catch (err) {
       mapLog("tracks load failed", err);
       setTracks([]);
       renderTracks([], map);
       setStatus("Patrol tracks could not be loaded. Map remains usable.");
+    }
+  }
+
+  async function loadAvailableMaps(map = leafletMap.current) {
+    try {
+      const available = await getMaps();
+      mapsRef.current = Array.isArray(available) ? available : [];
+      setMaps(mapsRef.current);
+      if (mapsRef.current.length === 0) {
+        setSelectedMapId("");
+        setMapNotice("No map installed. Add map.");
+        return;
+      }
+      const choice = chooseMapForTrack(mapsRef.current, "", safeLocalStorageGet(LAST_MAP_STORAGE_KEY));
+      if (choice.map) selectBaseMap(choice.map, map, false);
+    } catch {
+      mapsRef.current = [];
+      setMaps([]);
+      setMapNotice("No map installed. Add map.");
+    }
+  }
+
+  function selectBaseMap(mapInfo, map = leafletMap.current, clearNotice = true) {
+    if (!map || !mapInfo) return;
+    if (baseMapLayerRef.current) map.removeLayer(baseMapLayerRef.current);
+    baseMapLayerRef.current = L.tileLayer(mapTileUrl(mapInfo.id), {
+      minZoom: mapInfo.minzoom ?? 0,
+      maxZoom: mapInfo.maxzoom ?? 18,
+      tileSize: 256,
+      errorTileUrl: "",
+    }).addTo(map);
+    setSelectedMapId(mapInfo.id);
+    try { localStorage.setItem(LAST_MAP_STORAGE_KEY, mapInfo.id); } catch {}
+    if (clearNotice) setMapNotice("");
+  }
+
+  async function handleAddMap(file) {
+    if (!file || addingMap) return;
+    setAddingMap(true);
+    try {
+      const created = await addMap(file);
+      await loadAvailableMaps();
+      const installed = mapsRef.current.find((item) => item.id === created.id) || created;
+      selectBaseMap(installed);
+      setStatus(`Map added: ${installed.name}`);
+    } catch (error) {
+      setMapNotice(error.message || "Could not add map.");
+    } finally {
+      setAddingMap(false);
     }
   }
 
@@ -736,8 +796,32 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
       </div>
       <p className="tab-intro">{tt("map.intro")}</p>
 
+      <div className="map-picker">
+        <label>
+          <span>Offline map</span>
+          <select
+            value={selectedMapId}
+            disabled={maps.length === 0}
+            onChange={(event) => selectBaseMap(maps.find((item) => item.id === event.target.value))}
+          >
+            {maps.length === 0 && <option value="">No maps installed</option>}
+            {maps.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </label>
+        <label className="add-map-button">
+          {addingMap ? "Adding map..." : "+ Add map"}
+          <input
+            type="file"
+            accept=".mbtiles"
+            disabled={addingMap}
+            onChange={(event) => { handleAddMap(event.target.files?.[0]); event.target.value = ""; }}
+          />
+        </label>
+      </div>
+      {mapNotice && <div className="map-notice" role="status">{mapNotice}</div>}
+
       <div className="map-layer-toggles" aria-label={tt("map.layers")}>
-        {["prefectures", "roads", "rivers", "places", "pins", "tracks"].map((key) => (
+        {["pins", "tracks"].map((key) => (
           <label key={key}>
             <input
               type="checkbox"
@@ -947,22 +1031,6 @@ function isValidCoord(lat, lon) {
 function flattenLatLngs(value) {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => (Array.isArray(item) ? flattenLatLngs(item) : [item])).filter(Boolean);
-}
-
-function addMbtilesBaseLayer(map) {
-  const layer = L.tileLayer("http://127.0.0.1:8000/api/mbtiles/{z}/{x}/{y}", {
-    maxZoom: 18,
-    tileSize: 256,
-    errorTileUrl: "",
-  });
-  let tileErrorLogged = false;
-  layer.on("tileerror", () => {
-    if (!tileErrorLogged) {
-      tileErrorLogged = true;
-      mapLog("MBTiles tile unavailable");
-    }
-  });
-  layer.addTo(map);
 }
 
 function loadStoredTrackColors() {

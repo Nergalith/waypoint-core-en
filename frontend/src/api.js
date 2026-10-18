@@ -219,6 +219,25 @@ export async function getTracks() {
   return r.json();
 }
 
+export async function getMaps() {
+  const r = await fetch(`${BASE}/api/maps`);
+  if (!r.ok) throw new Error("Failed to load maps");
+  return r.json();
+}
+
+export async function addMap(file) {
+  const form = new FormData();
+  form.append("file", file);
+  const r = await fetch(`${BASE}/api/maps`, { method: "POST", body: form });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || "Could not add map");
+  return data;
+}
+
+export function mapTileUrl(mapId) {
+  return `${BASE}/api/tiles/${encodeURIComponent(mapId)}/{z}/{x}/{y}`;
+}
+
 export async function importAar(file) {
   const form = new FormData();
   form.append("file", file);

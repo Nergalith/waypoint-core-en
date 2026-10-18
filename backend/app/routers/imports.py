@@ -87,7 +87,7 @@ async def import_aar(file: UploadFile = File(...)):
 def get_tracks():
     with sqlite3.connect(DB_PATH) as conn:
         rows = conn.execute(
-            "SELECT id, callsign, import_filename, import_timestamp, source_format, point_count, geojson FROM patrol_tracks ORDER BY import_timestamp DESC"
+            "SELECT id, callsign, import_filename, import_timestamp, source_format, point_count, geojson, map_package_name FROM patrol_tracks ORDER BY import_timestamp DESC"
         ).fetchall()
     return [
         {
@@ -98,6 +98,7 @@ def get_tracks():
             "format": row[4],
             "point_count": row[5],
             "geojson": json.loads(row[6]),
+            "map_package_name": row[7],
         }
         for row in rows
     ]
@@ -216,16 +217,25 @@ async def _ingest_field_node(zf: zipfile.ZipFile, manifest: dict[str, Any], file
 
 def _ingest_wayfinder(zf: zipfile.ZipFile, filename: str) -> dict[str, Any]:
     tracks: list[dict[str, Any]] = []
+    map_package_name = ""
     for name in zf.namelist():
         lower = name.lower()
+        if os.path.basename(lower) == "manifest.json":
+            try:
+                manifest = _read_json_member(zf, name)
+                map_package_name = _map_package_name(manifest) or map_package_name
+            except HTTPException:
+                pass
+            continue
         if lower.endswith(".gpx"):
             tracks.extend(parse_gpx(zf.read(name), name))
         elif lower.endswith(".kml"):
             tracks.extend(parse_kml(zf.read(name), name))
         elif lower.endswith(".json") or lower.endswith(".geojson"):
-            if os.path.basename(lower) == "manifest.json":
-                continue
             tracks.extend(parse_json(zf.read(name), name))
+    if map_package_name:
+        for track in tracks:
+            track.setdefault("map_package_name", map_package_name)
     apply_wayfinder_callsign(tracks, filename)
     result = _save_tracks(tracks, filename, import_label="WAYFINDER")
     if not result:
@@ -254,8 +264,8 @@ def _save_tracks(tracks: list[dict[str, Any]], filename: str, import_label: str 
         for track in tracks:
             point_count = len(track["geojson"].get("coordinates", []))
             conn.execute(
-                "INSERT INTO patrol_tracks (callsign, import_filename, source_format, point_count, geojson) VALUES (?,?,?,?,?)",
-                (track["callsign"], filename, track["format"], point_count, json.dumps(track["geojson"])),
+                "INSERT INTO patrol_tracks (callsign, import_filename, source_format, point_count, geojson, map_package_name) VALUES (?,?,?,?,?,?)",
+                (track["callsign"], filename, track["format"], point_count, json.dumps(track["geojson"]), track.get("map_package_name")),
             )
     return {
         "imported": import_label or len(tracks),
@@ -357,10 +367,15 @@ def _normalize_photo_entries(report_data: dict[str, Any]) -> list[dict[str, str]
 def parse_zip(content: bytes) -> list[dict]:
     tracks = []
     with zipfile.ZipFile(io.BytesIO(content)) as zf:
+        map_package_name = ""
         for name in zf.namelist():
             data = zf.read(name)
             lower = name.lower()
             if os.path.basename(lower) == "manifest.json":
+                try:
+                    map_package_name = _map_package_name(json.loads(data.decode("utf-8-sig"))) or map_package_name
+                except Exception:
+                    pass
                 continue
             if lower.endswith(".gpx"):
                 tracks.extend(parse_gpx(data, name))
@@ -368,6 +383,9 @@ def parse_zip(content: bytes) -> list[dict]:
                 tracks.extend(parse_kml(data, name))
             elif lower.endswith(".json") or lower.endswith(".geojson"):
                 tracks.extend(parse_json(data, name))
+        if map_package_name:
+            for track in tracks:
+                track.setdefault("map_package_name", map_package_name)
     return tracks
 
 
@@ -439,7 +457,18 @@ def parse_json(data: bytes, filename: str) -> list[dict]:
             coords.extend([coord[:2] for coord in geom.get("coordinates", [])])
     if not coords:
         return []
-    return [{"callsign": callsign, "format": "json", "geojson": {"type": "LineString", "coordinates": coords}}]
+    track = {"callsign": callsign, "format": "json", "geojson": {"type": "LineString", "coordinates": coords}}
+    map_package_name = _map_package_name(parsed)
+    if map_package_name:
+        track["map_package_name"] = map_package_name
+    return [track]
+
+
+def _map_package_name(data: dict[str, Any]) -> str:
+    package = data.get("map_package")
+    if isinstance(package, dict):
+        return str(package.get("name") or "").strip()
+    return ""
 
 
 def _find_zip_member(zf: zipfile.ZipFile, wanted: str) -> str | None:

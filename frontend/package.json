@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5174 --configLoader native",
     "build": "vite build --configLoader native",
-    "preview": "vite preview --host 127.0.0.1 --port 5174 --configLoader native"
+    "preview": "vite preview --host 127.0.0.1 --port 5174 --configLoader native",
+    "test": "node --test"
   },
   "dependencies": {
     "react": "^18.3.1",

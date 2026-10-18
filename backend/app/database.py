@@ -180,6 +180,7 @@ def init_db() -> None:
             "pin_category": "TEXT NOT NULL DEFAULT 'general'",
             "location_description": "TEXT NOT NULL DEFAULT ''",
         })
+        _ensure_columns(conn, "patrol_tracks", {"map_package_name": "TEXT"})
         _repair_photo_storage_paths(conn)
 
 

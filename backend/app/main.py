@@ -177,6 +177,7 @@ def _get_next_report_number() -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    tiles.scan_maps()
     yield
 
 

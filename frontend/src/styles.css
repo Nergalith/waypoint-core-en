@@ -319,6 +319,57 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
   background: #081219;
   position: relative;
 }
+
+.map-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.map-picker > label:first-child {
+  display: grid;
+  gap: 5px;
+  min-width: min(360px, 100%);
+  color: var(--soft);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.map-picker select,
+.add-map-button {
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-strong);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+}
+
+.add-map-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-color: var(--accent);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.add-map-button input { display: none; }
+
+.map-notice {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid #f6a43a;
+  border-radius: 8px;
+  background: rgba(246, 164, 58, 0.12);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
 [data-theme="light"] .map-container { background: #e0f2fe; }
 #map { height: 100%; width: 100%; border-radius: 8px; }
 
