@@ -48,6 +48,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   const packageBoundsRef = useRef(null);
   const mapsRef = useRef([]);
   const baseMapLayerRef = useRef(null);
+  const focusedTrackIdRef = useRef(null);
   const pickCoordsModeRef = useRef(false);
   const [status, setStatus] = useState(tt("map.status_ready"));
   const [showHelp, setShowHelp] = useState(false);
@@ -271,16 +272,23 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   function selectBaseMap(mapInfo, map = leafletMap.current, clearNotice = true) {
     if (!map || !mapInfo) return;
     if (baseMapLayerRef.current) map.removeLayer(baseMapLayerRef.current);
+    const mapBounds = Array.isArray(mapInfo.bounds) && mapInfo.bounds.length === 4
+      ? [[mapInfo.bounds[1], mapInfo.bounds[0]], [mapInfo.bounds[3], mapInfo.bounds[2]]]
+      : undefined;
     baseMapLayerRef.current = L.tileLayer(mapTileUrl(mapInfo.id), {
       minNativeZoom: mapInfo.minzoom ?? 0,
       maxNativeZoom: mapInfo.maxzoom ?? 18,
       maxZoom: 19,
+      bounds: mapBounds,
       tileSize: 256,
       errorTileUrl: "",
     }).addTo(map);
     setSelectedMapId(mapInfo.id);
     try { localStorage.setItem(LAST_MAP_STORAGE_KEY, mapInfo.id); } catch {}
     if (clearNotice) setMapNotice("");
+    if (!focusedTrackIdRef.current && mapBounds) {
+      map.fitBounds(mapBounds, { padding: [24, 24] });
+    }
   }
 
   async function handleAddMap(file) {
@@ -340,6 +348,7 @@ export default function MapView({ lang = "en", lfiList, photoList, documentList,
   function focusTrack(track, index = 0) {
     const map = leafletMap.current;
     if (!map || !track) return;
+    focusedTrackIdRef.current = getTrackId(track, index);
     const choice = chooseMapForTrack(
       mapsRef.current,
       track.map_package_name || "",
@@ -1110,10 +1119,10 @@ function AARImport({ tt, onClose, onImport }) {
     setStatus(null);
     try {
       const data = await onImport(file);
-      const message = data?.skipped ? (data.reason || "Track already imported - skipped") : tt("map.aar_imported", { callsigns: (data.callsigns || []).join(", ") });
+      const message = data?.skipped ? tt("import.already_imported") : tt("map.aar_imported", { callsigns: (data.callsigns || []).join(", ") });
       setStatus({ ok: true, message });
     } catch (err) {
-      setStatus({ ok: false, message: tt("map.aar_error", { message: err.message || "Import failed" }) });
+      setStatus({ ok: false, message: tt("map.aar_error", { message: err.message || tt("import.failed") }) });
     } finally {
       setLoading(false);
     }
@@ -1130,7 +1139,7 @@ function AARImport({ tt, onClose, onImport }) {
           {loading ? tt("map.aar_importing") : tt("map.aar_drop")}
           <input
             type="file"
-            accept=".zip,.kml,.gpx"
+            accept=".zip,.json,.geojson,.kml,.gpx"
             onChange={(e) => handleFile(e.target.files?.[0])}
           />
         </div>

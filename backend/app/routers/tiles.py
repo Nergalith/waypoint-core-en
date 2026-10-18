@@ -21,6 +21,10 @@ _maps: dict[str, dict] = {}
 _lock = RLock()
 
 
+def _readonly_uri(path: Path) -> str:
+    return Path(path).resolve().as_uri() + "?mode=ro"
+
+
 def _slug(value: str) -> str:
     cleaned = re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
     return cleaned or "map"
@@ -28,7 +32,7 @@ def _slug(value: str) -> str:
 
 def _read_metadata(path: Path) -> dict:
     try:
-        with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)) as conn:
+        with closing(sqlite3.connect(_readonly_uri(path), uri=True, check_same_thread=False)) as conn:
             tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             if not {"metadata", "tiles"}.issubset(tables):
                 raise ValueError("Not a valid MBTiles file")
@@ -161,7 +165,7 @@ def _tile_response(item: dict, z: int, x: int, y: int) -> Response:
         raise HTTPException(status_code=404, detail="Tile not found")
     stored_y = y if item["scheme"] == "xyz" else (2**z - 1) - y
     try:
-        with closing(sqlite3.connect(f"file:{item['path']}?mode=ro", uri=True, check_same_thread=False)) as conn:
+        with closing(sqlite3.connect(_readonly_uri(item["path"]), uri=True, check_same_thread=False)) as conn:
             row = conn.execute(
                 "SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?",
                 (z, x, stored_y),

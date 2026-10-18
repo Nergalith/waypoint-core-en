@@ -148,6 +148,28 @@ def init_db() -> None:
                 geojson TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS import_receipts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                import_type TEXT NOT NULL,
+                export_id TEXT,
+                device_id TEXT,
+                content_hash TEXT,
+                filename TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS patrol_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                export_id TEXT,
+                device_id TEXT,
+                callsign TEXT,
+                session_id TEXT,
+                started_at TEXT,
+                ended_at TEXT,
+                data_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE INDEX IF NOT EXISTS idx_field_objects_updated ON field_objects(updated_at DESC);
             CREATE INDEX IF NOT EXISTS idx_patrol_tracks_imported ON patrol_tracks(import_timestamp DESC);
             """
@@ -166,6 +188,8 @@ def init_db() -> None:
             "last_edited_at": "TEXT",
             "imported_from": "TEXT",
             "fn_report_id": "TEXT",
+            "fn_device_id": "TEXT",
+            "fn_content_hash": "TEXT",
         })
         _ensure_columns(conn, "photos", {
             "related_to": "TEXT NOT NULL DEFAULT ''",
@@ -180,7 +204,12 @@ def init_db() -> None:
             "pin_category": "TEXT NOT NULL DEFAULT 'general'",
             "location_description": "TEXT NOT NULL DEFAULT ''",
         })
-        _ensure_columns(conn, "patrol_tracks", {"map_package_name": "TEXT"})
+        _ensure_columns(conn, "patrol_tracks", {
+            "map_package_name": "TEXT",
+            "export_id": "TEXT",
+            "device_id": "TEXT",
+            "patrol_sessions_json": "TEXT NOT NULL DEFAULT '[]'",
+        })
         _repair_photo_storage_paths(conn)
 
 

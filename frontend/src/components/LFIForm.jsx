@@ -410,9 +410,10 @@ export default function LFIForm({
           + New Report
         </button>
         <ImportBundle
+          tt={tt}
           onImportComplete={async () => {
             if (onSaved) await onSaved();
-            setStatus("Import complete. Review the draft report below.");
+            setStatus(tt("import.complete_review"));
             setTimeout(() => setStatus(""), 5200);
           }}
         />

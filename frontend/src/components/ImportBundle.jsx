@@ -2,21 +2,14 @@ import { useState } from "react";
 import { importBundle } from "../api";
 import { triggerGlobalRefresh } from "../utils/refreshBus";
 
-const FORMAT_LABELS = {
-  FIELD_NODE: "Field Node Report",
-  WAYFINDER: "Wayfinder Patrol Track",
-  AAR: "Wayfinder Patrol Track",
-};
-
-function resultFormat(data) {
-  if (!data) return "Import";
-  if (data.imported === "FIELD_NODE") return FORMAT_LABELS.FIELD_NODE;
-  if (data.imported === "WAYFINDER") return FORMAT_LABELS.WAYFINDER;
-  if (data.callsigns) return FORMAT_LABELS.AAR;
-  return FORMAT_LABELS[data.imported] || String(data.imported || "Import");
+function resultFormat(data, tt) {
+  if (!data) return tt("import.result_default");
+  if (data.imported === "FIELD_NODE") return tt("import.format_field_node");
+  if (data.imported === "WAYFINDER" || data.callsigns) return tt("import.format_wayfinder");
+  return String(data.imported || tt("import.result_default"));
 }
 
-export default function ImportBundle({ onImportComplete }) {
+export default function ImportBundle({ onImportComplete, tt }) {
   const [active, setActive] = useState(false);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
@@ -25,7 +18,7 @@ export default function ImportBundle({ onImportComplete }) {
   async function handleFiles(fileList) {
     const files = Array.from(fileList || []).filter((file) => file.name.toLowerCase().endsWith(".zip"));
     if (files.length === 0) {
-      setError("Drop ZIP files only (.zip)");
+      setError(tt("import.zip_only"));
       return;
     }
 
@@ -39,7 +32,7 @@ export default function ImportBundle({ onImportComplete }) {
         const data = await importBundle(file);
         nextResults.push({ file: file.name, ok: true, data });
       } catch (err) {
-        nextResults.push({ file: file.name, ok: false, error: err.message || "Import failed" });
+        nextResults.push({ file: file.name, ok: false, error: err.message || tt("import.failed") });
       }
     }
 
@@ -61,7 +54,7 @@ export default function ImportBundle({ onImportComplete }) {
   if (!active) {
     return (
       <button type="button" className="small-action btn-import" onClick={() => setActive(true)}>
-        Import Bundle
+        {tt("import.button")}
       </button>
     );
   }
@@ -78,12 +71,12 @@ export default function ImportBundle({ onImportComplete }) {
           onDragOver={(e) => e.preventDefault()}
         >
           {loading ? (
-            <p>Importing...</p>
+            <p>{tt("import.importing")}</p>
           ) : (
             <>
-              <p className="import-title">Drop ZIP bundles here</p>
+              <p className="import-title">{tt("import.drop")}</p>
               <p className="import-sub">
-                Field Node reports and Wayfinder tracks are detected automatically. Multiple ZIPs are OK.
+                {tt("import.help")}
               </p>
               <input
                 type="file"
@@ -104,27 +97,31 @@ export default function ImportBundle({ onImportComplete }) {
           <div key={`${result.file}-${index}`} className={`import-status ${result.ok ? "ok" : "error"}`}>
             {result.ok ? (
               <>
-                <strong>{result.file}</strong> - {resultFormat(result.data)}
+                <strong>{result.file}</strong> - {resultFormat(result.data, tt)}
                 {result.data?.skipped && (
-                  <span>{" "}- {result.data.reason || "already imported - skipped"}</span>
+                  <span>{" "}- {tt("import.already_imported")}</span>
                 )}
                 {!result.data?.skipped && result.data?.waypoint_report_number && (
                   <span>
-                    {" "}- {result.data.waypoint_report_number}, {result.data.photos_saved || 0} photo(s), pin {result.data.pin_created ? "created" : "not created (no GPS)"}
+                    {" "}- {tt("import.field_node_result", {
+                      report: result.data.waypoint_report_number,
+                      photos: result.data.photos_saved || 0,
+                      pin: result.data.pin_created ? tt("import.pin_created") : tt("import.pin_not_created"),
+                    })}
                   </span>
                 )}
                 {result.data?.callsigns && (
-                  <span>{" "}- Tracks: {result.data.callsigns.join(", ")}</span>
+                  <span>{" "}- {tt("import.tracks", { callsigns: result.data.callsigns.join(", ") })}</span>
                 )}
               </>
             ) : (
-              <><strong>{result.file}</strong> - Failed: {result.error}</>
+              <><strong>{result.file}</strong> - {tt("import.failed_detail", { message: result.error })}</>
             )}
           </div>
         ))}
 
         <div className="import-actions">
-          <button type="button" className="small-action" onClick={close}>Close</button>
+          <button type="button" className="small-action" onClick={close}>{tt("import.close")}</button>
         </div>
       </div>
     </div>

@@ -76,6 +76,17 @@ class MapApiTestClientTests(unittest.TestCase):
         self.assertEqual(tile.content, PNG_TILE)
         self.assertEqual(tile.headers["cache-control"], "public, max-age=86400")
 
+    def test_filename_with_hash_is_opened_through_encoded_readonly_uri(self):
+        create_mbtiles(tiles.MAPS_DIR / "Map #2.mbtiles", name="Map Number Two")
+
+        maps = self.client.get("/api/maps")
+        tile = self.client.get("/api/tiles/map-2/1/0/0")
+
+        self.assertEqual(maps.status_code, 200)
+        self.assertEqual(maps.json()[0]["name"], "Map Number Two")
+        self.assertEqual(tile.status_code, 200)
+        self.assertEqual(tile.content, PNG_TILE)
+
     def test_upload_valid_map_rescans_registry(self):
         self.assertEqual(self.client.get("/api/maps").json(), [])
         response = self.client.post(
