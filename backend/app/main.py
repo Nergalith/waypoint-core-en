@@ -12,7 +12,7 @@ from typing import Dict, List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -182,6 +182,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Waypoint Core API", version="0.3.0", lifespan=lifespan)
+
+@app.exception_handler(imports.ImportFailure)
+async def import_failure_handler(_request, exc: imports.ImportFailure):
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail, "code": exc.code})
+
 
 app.add_middleware(
     CORSMiddleware,
